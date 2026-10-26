@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#060a12">
+<title>VVVF Lab · 3D 电机与声音</title>
+<style>
+  :root {
+    --bg0: #05080f; --bg1: #0d1727; --bg2: #16263f;
+    --glass: rgba(10, 16, 28, .78);
+    --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
+    --text: #e8eef9; --muted: #8997b0; --dim: #566680;
+    --cyan: #22d3ee; --rose: #fb7185; --lime: #a3e635;
+    --m-async: #2dd4bf; --m-sync: #818cf8; --m-wide: #e879f9; --m-square: #fbbf24;
+    --phA: #f2c230; --phB: #3dbb6a; --phC: #e5484d;
+    --deck-h: 320px;
+    --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    --font-num: Bahnschrift, "Segoe UI Variable Display", "DIN Alternate", "Roboto Condensed", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--text); background: var(--bg0); font: 14px/1.5 var(--font-ui); }
+  body {
+    background: radial-gradient(ellipse 75% 85% at 50% 38%, var(--bg2) 0%, var(--bg1) 40%, var(--bg0) 100%);
+  }
+  /* 淡淡的方格底纹，像实验台的坐标纸 */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; opacity: .9;
+    background-image: linear-gradient(rgba(255, 255, 255, .03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .03) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 0%, transparent 75%);
+    mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 0%, transparent 75%);
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .grow { flex: 1; }
+
+  /* ================= 舞台 ================= */
+  #stage { position: fixed; left: 0; right: 0; top: 0; bottom: var(--deck-h); }
+  #gl { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #gl:active { cursor: grabbing; }
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .tag {
+    position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 12px; padding: 2px 9px; border-radius: 999px;
+    background: rgba(8, 13, 24, .82); border: 1px solid var(--line); color: #cfe0f5; will-change: transform;
+  }
+  #nogl { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 24px; }
+
+  /* ================= 顶部 ================= */
+  #top {
+    position: fixed; left: 14px; top: 14px; z-index: 8; display: flex; align-items: center; gap: 14px;
+    padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: .3px; }
+  .brand small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .logo path { fill: none; stroke-width: 2; stroke-linecap: round; }
+  .topbtns { display: flex; gap: 6px; }
+  .pill {
+    border: 1px solid var(--line); background: rgba(255, 255, 255, .05); border-radius: 999px; padding: 4px 14px; font-size: 13px; color: #cfdaee;
+  }
+  .pill:hover { background: rgba(255, 255, 255, .12); }
+  .pill.on { background: rgba(34, 211, 238, .18); border-color: rgba(34, 211, 238, .5); color: #c3f4fc; }
+  .pill.round { width: 30px; padding: 4px 0; text-align: center; font-weight: 700; }
+
+  /* ================= 右上角：声谱图和开关波形 ================= */
+  #cards { position: fixed; right: 14px; top: 14px; width: 272px; z-index: 6; display: flex; flex-direction: column; gap: 10px; }
+  .card { background: rgba(8, 13, 24, .84); border: 1px solid var(--line); border-radius: 16px; padding: 9px 12px 11px; }
+  .card header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 7px; }
+  .card header b { color: var(--text); font-weight: 600; }
+  .card canvas { width: 100%; display: block; border-radius: 8px; background: #03060c; }
+  .spwrap { display: flex; gap: 6px; }
+  .spwrap canvas { height: 120px; }
+  .yax { display: flex; flex-direction: column; justify-content: space-between; font: 10px/1 var(--font-num); color: var(--dim); text-align: right; padding: 1px 0; }
+  #wave { height: 92px; }
+  .vu { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-top: 8px; }
+  .vu i { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, #2dd4bf, #a3e635 70%, #fbbf24 90%, #fb7185); }
+
+  /* ================= 运转台 ================= */
+  #deck {
+    position: fixed; left: 14px; right: 14px; bottom: 14px; z-index: 6; padding: 12px 18px 16px; border-radius: 22px;
+    background: linear-gradient(180deg, rgba(22, 33, 52, .84), rgba(9, 14, 25, .93)); border: 1px solid var(--line);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .07); backdrop-filter: blur(14px);
+  }
+  .row1 {
+    display: grid; grid-template-columns: 176px minmax(260px, 1fr) minmax(340px, 1.25fr) 206px; gap: 24px; align-items: stretch; margin-top: 12px;
+    grid-template-areas: "speed stats lever inv";
+  }
+  .blk { min-width: 0; position: relative; }
+  .blk + .blk::before { content: ''; position: absolute; left: -12px; top: 4px; bottom: 4px; width: 1px; background: var(--line); }
+  .speed { grid-area: speed; } .stats { grid-area: stats; } .lever { grid-area: lever; } .inv { grid-area: inv; }
+  .cap { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--dim); letter-spacing: .14em; margin-bottom: 5px; }
+  .cap b { letter-spacing: 0; font-size: 12px; font-weight: 600; color: #cfdaee; }
+
+  .spd { display: flex; align-items: baseline; gap: 6px; line-height: .95; }
+  .spd b { font: 400 64px/1 var(--font-num); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .spd i { font-style: normal; font-size: 13px; color: var(--muted); }
+  .rpmbar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .07); overflow: hidden; margin-top: 9px; }
+  .rpmbar i { display: block; height: 100%; background: linear-gradient(90deg, #3b82f6, #22d3ee 25%, #34d399 50%, #fbbf24 75%, #f43f5e); clip-path: inset(0 100% 0 0); }
+  .rpmcap { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--dim); margin-top: 3px; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 9px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 3px 12px; font-size: 13px; background: rgba(255, 255, 255, .07); color: #d5deef; white-space: nowrap; }
+  .chip.st.power { background: rgba(34, 211, 238, .18); color: #9ceaf7; }
+  .chip.st.brake { background: rgba(251, 113, 133, .2); color: #ffc0c8; }
+  .chip.st.hold { background: rgba(163, 230, 53, .15); color: #d3f58b; }
+  .chip.st.coast { background: rgba(255, 255, 255, .1); }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--h, #64748b); box-shadow: 0 0 10px var(--h, transparent); }
+  .kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px 14px; margin: 0; }
+  .kv div { min-width: 0; }
+  .kv dt { font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .kv dd { margin: 0; font: 400 22px/1.15 var(--font-num); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .kv dd i { font: 11px var(--font-ui); color: var(--muted); font-style: normal; margin-left: 3px; }
+
+  /* ---- 主手柄 ---- */
+  .lv { display: flex; align-items: center; gap: 10px; }
+  .step {
+    flex: none; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line2); background: rgba(255, 255, 255, .05);
+    font-size: 20px; line-height: 1; display: grid; place-items: center; padding: 0 0 2px; color: #cbd7ec;
+  }
+  .step:hover { background: rgba(255, 255, 255, .13); }
+  .lever { --n: 11; --i: 5; }
+  .track {
+    position: relative; flex: 1; height: 52px; border-radius: 14px; background: #070b14; border: 1px solid var(--line2);
+    touch-action: none; cursor: pointer; overflow: hidden;
+  }
+  .track::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, rgba(251, 113, 133, .5) 0%, rgba(251, 113, 133, .1) 44%, transparent 45.4%, transparent 54.5%, rgba(163, 230, 53, .13) 54.5%, rgba(163, 230, 53, .13) 63.6%, rgba(34, 211, 238, .1) 63.6%, rgba(34, 211, 238, .5) 100%);
+  }
+  .track::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / var(--n) - 1px), rgba(255, 255, 255, .1) calc(100% / var(--n) - 1px), rgba(255, 255, 255, .1) calc(100% / var(--n)));
+  }
+  .thumb {
+    position: absolute; top: 5px; bottom: 5px; z-index: 1; width: calc(100% / var(--n) - 6px); left: calc((var(--i) + .5) * 100% / var(--n)); transform: translateX(-50%);
+    border-radius: 9px; background: linear-gradient(180deg, #f7fafe, #bcc8da); color: #0a1220; font: 700 14px var(--font-num);
+    display: grid; place-items: center; box-shadow: 0 5px 14px rgba(0, 0, 0, .55), 0 0 0 2px var(--glow, rgba(255, 255, 255, .35)), inset 0 -3px 0 rgba(0, 0, 0, .18);
+    transition: left .13s cubic-bezier(.2, .9, .3, 1), box-shadow .2s; pointer-events: none;
+  }
+  .lever[data-mode=power] .thumb { --glow: rgba(34, 211, 238, .95); }
+  .lever[data-mode=brake] .thumb { --glow: rgba(251, 113, 133, .95); }
+  .lever[data-mode=hold] .thumb { --glow: rgba(163, 230, 53, .95); }
+  .lv-labels { display: grid; grid-template-columns: repeat(var(--n), 1fr); margin: 5px 42px 0; font: 11px/1.2 var(--font-num); text-align: center; color: var(--dim); }
+  .lv-labels span { cursor: pointer; padding: 3px 0; border-radius: 6px; }
+  .lv-labels .brake { color: #d98591; } .lv-labels .power { color: #78c4d6; } .lv-labels .hold { color: #b4d86a; }
+  .lv-labels .n { color: #fff; font-weight: 700; }
+  .lv-labels .on { background: rgba(255, 255, 255, .13); color: #fff; }
+  .lv-note { display: flex; justify-content: space-between; margin: 4px 42px 0; font-size: 10.5px; color: var(--dim); }
+
+  /* ---- 逆变器、声音 ---- */
+  .lamp {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line2);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02)); font-weight: 600; letter-spacing: .04em; color: #b4c1d8;
+  }
+  .lamp .led { width: 11px; height: 11px; border-radius: 50%; background: #3b4658; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6); transition: .2s; }
+  .lamp small { margin-left: auto; font-weight: 500; font-size: 11px; color: var(--dim); letter-spacing: .08em; }
+  .lamp.on { color: #e6fbff; border-color: rgba(34, 211, 238, .45); }
+  .lamp.on .led { background: var(--cyan); box-shadow: 0 0 10px 2px rgba(34, 211, 238, .8); }
+  .lamp.on small { color: #8fe3f1; }
+  .snd { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+  button.icon { flex: none; width: 34px; height: 34px; border-radius: 10px; border: 1px solid transparent; background: none; color: #cfe0f5; display: grid; place-items: center; padding: 0; }
+  button.icon:hover { background: rgba(255, 255, 255, .09); }
+  button.icon.off { color: #66748b; }
+  .tiny { margin: 6px 0 0; font-size: 11px; color: var(--dim); }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; height: 22px; margin: 0; min-width: 0; flex: 1; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .2); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; margin-top: -5px; box-shadow: 0 1px 5px rgba(0, 0, 0, .5); }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .2); }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #fff; }
+
+  /* ================= 模式标尺 ================= */
+  #ruler { position: relative; user-select: none; -webkit-user-select: none; }
+  #plot { position: relative; }
+  #rulerSvg { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+  .lanebg { fill: rgba(255, 255, 255, .035); }
+  .ytop { font: 10px var(--font-num); fill: var(--dim); pointer-events: none; }
+  .seg { cursor: pointer; }
+  .seg rect { fill: var(--h); fill-opacity: .2; stroke: var(--h); stroke-opacity: .5; stroke-width: 1; transition: fill-opacity .12s; }
+  .seg:hover rect { fill-opacity: .3; }
+  .seg.cur rect { fill-opacity: .27; stroke-opacity: .9; }
+  .seg.live rect { fill-opacity: .42; stroke-opacity: 1; filter: drop-shadow(0 0 7px var(--h)); }
+  .seg.sel rect { stroke-width: 2; stroke-opacity: 1; fill-opacity: .36; }
+  .seg text { pointer-events: none; paint-order: stroke; stroke: rgba(8, 13, 24, .7); stroke-width: 3px; stroke-linejoin: round; }
+  .seg .t1 { font: 600 12px var(--font-ui); fill: #dbe7ff; fill: color-mix(in srgb, var(--h) 52%, white); }
+  .seg .t2 { font: 10.5px var(--font-num); fill: #aebcd6; fill: color-mix(in srgb, var(--h) 40%, #cbd5e1); }
+  .legend { position: absolute; right: 16px; top: 0; z-index: 0; display: flex; gap: 14px; font-size: 11px; color: var(--muted); pointer-events: none; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 9px; height: 9px; border-radius: 3px; background: var(--h); box-shadow: 0 0 8px var(--h); }
+  #rulerSvg { position: relative; z-index: 1; }
+  .traces path { fill: none; pointer-events: none; stroke-linejoin: round; stroke-linecap: round; }
+  .traces .glow { stroke: rgba(255, 255, 255, .16); stroke-width: 4; }
+  .traces .line { stroke: #f4f8ff; stroke-width: 1.5; }
+  .vmark line { stroke: rgba(255, 255, 255, .3); stroke-dasharray: 2 3; pointer-events: none; }
+  .cdot { fill: #fff; stroke: var(--cyan); stroke-width: 2; filter: drop-shadow(0 0 6px var(--cyan)); pointer-events: none; }
+  .handle { cursor: ew-resize; }
+  .handle .hit { fill: transparent; }
+  .handle .grip { fill: rgba(255, 255, 255, .22); transition: fill .12s; }
+  .handle:hover .grip { fill: rgba(255, 255, 255, .95); }
+  .axis line { stroke: rgba(255, 255, 255, .22); }
+  .axis text { font: 10.5px var(--font-num); fill: var(--muted); pointer-events: none; }
+  .axis .unit { fill: var(--dim); }
+  .ph { cursor: ew-resize; }
+  .ph line { stroke: #fff; stroke-width: 2; filter: drop-shadow(0 0 5px rgba(255, 255, 255, .75)); pointer-events: none; }
+  .ph .flag { fill: #f4f8ff; pointer-events: none; }
+  .ph text { font: 700 12px var(--font-num); fill: #0a1220; pointer-events: none; }
+  .ph .grab { fill: transparent; }
+  .lane-lab { position: absolute; left: 0; z-index: 2; display: flex; align-items: center; gap: 4px; padding-left: 2px; pointer-events: none; }
+  .lane-lab b, .lane-lab small { white-space: nowrap; }
+  .lane-lab.narrow { flex-direction: column; justify-content: center; gap: 1px; padding-left: 0; }
+  .lane-lab.narrow .mini { margin: 0; width: 24px; height: 18px; font-size: 14px; padding: 0 0 3px; border-radius: 6px; }
+  .lane-lab b { font-size: 13px; font-weight: 600; }
+  .lane-lab small { color: var(--dim); font-size: 11px; }
+  .mini { margin-left: auto; pointer-events: auto; width: 24px; height: 24px; border-radius: 8px; border: 0; background: rgba(255, 255, 255, .06); color: #aebbd2; line-height: 1; padding: 0 0 4px; font-size: 16px; }
+  .mini:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+  .mini + .mini { margin-left: 3px; }
+  .mini[data-scale] { font-size: 14px; padding-bottom: 2px; }
+
+  /* ---- 弹出的编辑框 ---- */
+  .pop {
+    position: absolute; z-index: 12; bottom: calc(100% + 14px); width: 352px; border-radius: 16px;
+    background: rgba(8, 13, 24, .97); border: 1px solid var(--line2); box-shadow: 0 20px 56px rgba(0, 0, 0, .6);
+  }
+  /* 内容放在里面一层，太高时在里面滚动；小箭头在外层，不会被裁掉 */
+  .pop-scroll { padding: 12px 14px; max-height: calc(100vh - var(--deck-h) - 76px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .28) transparent; border-radius: 16px; }
+  .pop::after {
+    content: ''; position: absolute; bottom: -7px; left: var(--caret, 50%); width: 12px; height: 12px; background: #080d18;
+    border-right: 1px solid var(--line2); border-bottom: 1px solid var(--line2); transform: translateX(-50%) rotate(45deg);
+  }
+  .pop-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 9px; }
+  .pop-head b { display: block; font-size: 14px; }
+  .pop-head small { color: var(--muted); font: 12px var(--font-num); }
+  .x { border: 0; background: none; color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 6px; }
+  .x:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+  .kinds { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 3px; border-radius: 11px; background: rgba(255, 255, 255, .06); }
+  .kinds button { border: 0; background: none; border-radius: 8px; padding: 6px 2px; font-size: 13px; color: var(--muted); }
+  .kinds button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+  .kinds button[data-kind=async].on { background: var(--m-async); color: #04201c; font-weight: 600; }
+  .kinds button[data-kind=sync].on { background: var(--m-sync); color: #0c1034; font-weight: 600; }
+  .kinds button[data-kind=wide3].on { background: var(--m-wide); color: #36093c; font-weight: 600; }
+  .kinds button[data-kind=square].on { background: var(--m-square); color: #3a2a02; font-weight: 600; }
+  .flds { margin-top: 4px; }
+  .fld { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 13px; color: var(--muted); }
+  .fld > :first-child { min-width: 0; }
+  .fld i, .fld em { font-style: normal; color: var(--dim); font-size: 12px; }
+  .fld .lbl { width: 62px; flex: none; }
+  input[type=number], input[type=text], select, textarea {
+    background: rgba(255, 255, 255, .06); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; color: var(--text); min-width: 0;
+  }
+  input[type=text]::placeholder { color: var(--dim); }
+  input[type=number] { width: 86px; font-family: var(--font-num); }
+  select { width: 100%; } select option { background: #121c2f; }
+  .hint { margin: 9px 0 0; font-size: 12px; color: var(--muted); }
+  .fld .txt { flex: 1; width: 100%; font-family: var(--font-num); letter-spacing: .02em; }
+  .fld select { width: auto; flex: 1; }
+  .fld select.narrow { flex: none; width: 72px; }
+  .fld input[type=number] { width: 74px; }
+  .actions { display: flex; align-items: center; gap: 6px; margin-top: 11px; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--line2); background: rgba(255, 255, 255, .06); border-radius: 9px; padding: 4px 11px; font-size: 13px; color: #dbe5f5; white-space: nowrap; }
+  .row select { flex: 1; width: auto; }
+  .btn:hover:not(:disabled) { background: rgba(255, 255, 255, .14); }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .btn.primary { background: var(--cyan); border-color: transparent; color: #04202a; font-weight: 600; }
+  .btn.primary:hover { background: #5ee3f5; }
+  .btn.danger { color: #fda4af; }
+  .err { color: #ff9aa5; font-size: 12px; margin: 8px 0 0; min-height: 1em; white-space: pre-wrap; }
+  .err.ok { color: #8fe3f1; }
+  .err:empty { display: none; }
+
+  /* ================= 左侧抽屉：电机、显示 ================= */
+  #drawer {
+    position: fixed; left: 14px; top: 66px; bottom: calc(var(--deck-h) - 2px); width: 372px; z-index: 9; display: flex; flex-direction: column;
+    background: rgba(8, 13, 24, .95); border: 1px solid var(--line2); border-radius: 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, .55); overflow: hidden;
+  }
+  .dr-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0 14px; border-bottom: 1px solid var(--line); }
+  .dr-tabs { display: flex; gap: 2px; flex: 1; }
+  .dr-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 14px; color: var(--muted); font-size: 14px; }
+  .dr-tabs button.on { color: #fff; border-bottom-color: var(--cyan); }
+  .dr-body { flex: 1; overflow-y: auto; padding: 12px 16px 18px; scrollbar-width: thin; }
+  .dr-body h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; letter-spacing: .1em; }
+  .dr-body h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+  .row > * { min-width: 0; }
+  label.line { display: flex; align-items: center; gap: 9px; margin: 6px 0; cursor: pointer; }
+  label.line input { accent-color: var(--cyan); width: 16px; height: 16px; }
+  textarea { width: 100%; height: 250px; resize: vertical; white-space: pre; font: 12px/1.45 Consolas, "Courier New", monospace; }
+  .note { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+  output { min-width: 66px; text-align: right; font-variant-numeric: tabular-nums; color: #cfe0f5; font-size: 13px; }
+  details summary { cursor: pointer; color: #cfe0f5; }
+
+  /* ================= 新手提示 ================= */
+  #coach {
+    position: fixed; left: 14px; top: 68px; width: 350px; z-index: 10; max-height: calc(100vh - var(--deck-h) - 80px); overflow-y: auto;
+    padding: 14px 16px; border-radius: 18px; background: rgba(8, 13, 24, .96); border: 1px solid rgba(34, 211, 238, .4); box-shadow: 0 20px 56px rgba(0, 0, 0, .6);
+  }
+  @media (max-width: 1100px) {
+    #coach { left: 50%; top: auto; transform: translateX(-50%); bottom: calc(var(--deck-h) + 2px); width: min(560px, calc(100vw - 28px)); }
+  }
+  #coach h3 { margin: 0 0 8px; font-size: 15px; }
+  #coach ol { margin: 0; padding-left: 20px; color: #c4d0e4; font-size: 13px; }
+  #coach li { margin: 3px 0; }
+  #coach kbd { font: 11px var(--font-num); background: rgba(255, 255, 255, .1); border: 1px solid var(--line2); border-radius: 5px; padding: 0 5px; }
+  #coach .actions { margin-top: 10px; }
+
+  /* ================= 小一点的屏幕 ================= */
+  @media (max-width: 1240px) {
+    .row1 { grid-template-columns: 150px minmax(210px, 1fr) minmax(290px, 1.2fr) 178px; gap: 20px; }
+    .spd b { font-size: 58px; }
+    .kv dd { font-size: 19px; }
+    #cards { width: 248px; }
+    .spwrap canvas { height: 100px; }
+  }
+  @media (max-width: 1100px) {
+    .row1 { grid-template-columns: 124px minmax(186px, 1fr) minmax(250px, 1.2fr) 150px; gap: 16px; }
+    .spd b { font-size: 50px; }
+    .kv { gap: 6px 10px; }
+    .kv dd { font-size: 17px; }
+    .lv-note, .lamp small { display: none; }
+    #cards { width: 220px; }
+    #wave { height: 64px; }
+    .spwrap canvas { height: 84px; }
+    .legend { gap: 10px; }
+  }
+  /* 平板竖屏：手柄单独占一行 */
+  @media (max-width: 920px) {
+    #cards, .legend { display: none; }
+    .row1 { grid-template-columns: 150px minmax(0, 1fr) 190px; grid-template-areas: "speed stats inv" "lever lever lever"; row-gap: 14px; }
+    .spd b { font-size: 58px; }
+    .lv-note { display: flex; }
+    .lamp small { display: inline; }
+    .lever::before { display: none; }
+    .blk.lever { border-top: 1px solid var(--line); padding-top: 12px; }
+  }
+  /* 矮屏幕（小笔记本）：把运转台压扁，给电机留地方 */
+  @media (max-height: 800px) and (min-width: 761px) {
+    #deck { padding: 8px 16px 12px; }
+    .row1 { margin-top: 8px; }
+    .spd b { font-size: 48px; }
+    .rpmcap { display: none; }
+    .rpmbar { margin-top: 5px; }
+    .cap { margin-bottom: 2px; }
+    .kv { gap: 4px 12px; }
+    .kv dd { font-size: 17px; }
+    .chips { margin-bottom: 5px; }
+    .chip { padding: 1px 10px; font-size: 12px; }
+    .lv-note { display: none; }
+    .track { height: 42px; }
+    .step { width: 28px; height: 28px; }
+    .lv-labels { margin: 3px 38px 0; }
+    .lv-labels span { padding: 1px 0; }
+    .lamp { padding: 6px 10px; }
+    .snd { margin-top: 5px; }
+    .tiny { display: none; }
+    #cards .card + .card { display: none; }
+  }
+  @media (max-width: 760px) {
+    :root { --deck-h: 60vh; }
+    #top { left: 8px; top: 8px; gap: 8px; padding: 4px 6px 4px 12px; }
+    .brand small { display: none; }
+    #deck { left: 0; right: 0; bottom: 0; height: var(--deck-h); border-radius: 20px 20px 0 0; overflow-y: auto; padding: 12px 14px 22px; display: flex; flex-direction: column; border-left: 0; border-right: 0; border-bottom: 0; }
+    #ruler { order: 2; margin-top: 18px; flex: none; display: flex; flex-direction: column; }
+    #ruler .pop { order: -1; }
+    .row1 { order: 1; margin-top: 0; grid-template-columns: 1fr 1fr; grid-template-areas: "speed inv" "stats stats" "lever lever"; gap: 14px; }
+    .blk + .blk::before { display: none; }
+    .blk.lever { border-top: 0; padding-top: 0; }
+    .spd b { font-size: 56px; }
+    .pop { position: static; width: auto; margin: 0 0 12px; }
+    .pop::after { display: none; }
+    .pop-scroll { max-height: none; overflow: visible; }
+    #drawer { left: 8px; right: 8px; width: auto; top: 54px; bottom: 8px; }
+    #coach { bottom: calc(var(--deck-h) + 4px); }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <div id="labels"></div>
+</div>
+<div id="nogl" hidden>这台设备上无法创建 WebGL 画面。请换一个较新的浏览器（Chrome、Edge、Firefox），并确认已开启硬件加速。</div>
+
+<!-- ============ 顶部 ============ -->
+<header id="top">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 34 22" width="34" height="22" aria-hidden="true">
+      <defs><clipPath id="lg"><rect x="0" y="0" width="34" height="22"/></clipPath></defs>
+      <g clip-path="url(#lg)">
+        <path stroke="#f2c230" d="M-6 11 Q-1.75 -1 2.5 11 T11 11 T19.5 11 T28 11 T36.5 11"/>
+        <path stroke="#3dbb6a" d="M-11.7 11 Q-7.4 -1 -3.2 11 T5.3 11 T13.8 11 T22.3 11 T30.8 11 T39.3 11"/>
+        <path stroke="#e5484d" d="M-17.3 11 Q-13 -1 -8.8 11 T-0.3 11 T8.2 11 T16.7 11 T25.2 11 T33.7 11 T42.2 11"/>
+      </g>
+    </svg>
+    <span>VVVF Lab</span><small>3D 电机 · 声音</small>
+  </div>
+  <nav class="topbtns">
+    <button class="pill" id="btnMotor">电机</button>
+    <button class="pill" id="btnView">显示</button>
+    <button class="pill" id="demo">演示</button>
+    <button class="pill round" id="btnHelp" aria-label="怎么玩" title="怎么玩">?</button>
+  </nav>
+</header>
+
+<!-- ============ 右上角：声谱图、开关波形 ============ -->
+<aside id="cards">
+  <section class="card">
+    <header><b>声谱图</b><span>0–4 kHz · 最近 7 秒</span></header>
+    <div class="spwrap">
+      <div class="yax"><span>4k</span><span>3k</span><span>2k</span><span>1k</span><span>0</span></div>
+      <canvas id="spec"></canvas>
+    </div>
+    <div class="vu" title="声音的响度"><i id="vuFill"></i></div>
+  </section>
+  <section class="card">
+    <header><b>A 相桥臂开关波形</b><span id="waveCap">—</span></header>
+    <canvas id="wave"></canvas>
+  </section>
+</aside>
+
+<!-- ============ 新手提示 ============ -->
+<div id="coach" hidden>
+  <h3>怎么玩</h3>
+  <ol>
+    <li><b>拨主手柄</b>：向右推（或按 <kbd>↑</kbd>/<kbd>W</kbd>）起步加速，向左拉（<kbd>↓</kbd>/<kbd>S</kbd>）制动。<kbd>空格</kbd> 回到空档 N，<kbd>H</kbd> 定速。空档和定速时逆变器仍在运转，声音会一直持续。</li>
+    <li><b>拖标尺上的白色竖线</b>（或在标尺上任意位置按住拖动），直接跳到任意车速，停下来就能慢慢听。</li>
+    <li><b>点标尺上的一段</b>，改它的调制方式、载波频率、脉冲数，按“试听”马上听到；拖两段之间的分界线可以改速度范围。</li>
+  </ol>
+  <div class="actions"><button class="btn primary" id="coachGo">开始：推到 P4 加速</button><button class="btn" id="coachOk">知道了</button></div>
+</div>
+
+<!-- ============ 运转台 ============ -->
+<section id="deck">
+  <div id="ruler">
+    <div id="insp" class="pop" hidden role="dialog" aria-label="编辑这一段"><div class="pop-scroll">
+      <div class="pop-head"><div><b id="inspTitle">力行 · 第 1 段</b><small id="inspRange">0 – 34.5 km/h</small></div><button class="x" id="inspClose" aria-label="关闭">✕</button></div>
+      <div class="kinds" id="inspKinds">
+        <button data-kind="async">异步</button><button data-kind="sync">同步</button><button data-kind="wide3">宽 3</button><button data-kind="square">方波</button>
+      </div>
+      <div class="flds">
+        <label class="fld"><span class="lbl">速度上限</span><input id="eTo" type="number" step="0.5" min="1"><i>km/h</i></label>
+        <label class="fld" id="rowAsync"><span class="lbl">载波</span><input id="eFc0" type="number" step="10" min="20" max="20000"><em>→</em><input id="eFc1" type="number" step="10" min="20" max="20000"><i>Hz</i></label>
+        <label class="fld" id="rowSync"><span class="lbl">脉冲数 N</span><input id="eN" type="number" step="2" min="3" max="99"><i>3–99 的奇数</i></label>
+        <p class="hint" id="rowHint" hidden></p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="inspPrev" title="上一段">◀</button><button class="btn" id="inspNext" title="下一段">▶</button>
+        <button class="btn primary" id="inspListen" title="跳到这一段并发声：力行表里定速，制动表里用最轻的制动缓缓滑过">▶ 试听</button>
+        <span class="grow"></span>
+        <button class="btn" id="segSplit">拆分</button><button class="btn danger" id="segDel">删除</button>
+      </div>
+      <p id="segErr" class="err"></p>
+    </div></div>
+
+    <div id="laneMenu" class="pop" hidden role="dialog" aria-label="表的选项"><div class="pop-scroll">
+      <div class="pop-head"><div><b id="menuTitle">力行表（A）的选项</b></div><button class="x" id="menuClose" aria-label="关闭">✕</button></div>
+      <div class="row"><select id="tblPreset" aria-label="预设"></select><button class="btn" id="tblLoad">载入</button></div>
+      <div class="flds">
+        <label class="fld"><span class="lbl">满调制</span><input id="vBase" type="number" step="1" min="1"><i>km/h</i></label>
+        <label class="fld"><span class="lbl">满电压</span><input id="vFull" type="number" step="1" min="2"><i>km/h</i></label>
+        <p class="hint">基波电压按 V/f 随车速上升：到“满调制”车速参考波幅值为 1，到“满电压”车速输出等效于方波。标尺上的虚线就是这两个速度。</p>
+      </div>
+      <div class="actions"><button class="btn" id="tblScale" title="在一段速度范围里铺一串从低到高的异步段，加速时就是哆来咪">♪ 音阶台阶（哆来咪）…</button></div>
+      <div class="actions"><button class="btn" id="tblCopy">复制到制动表</button><button class="btn" id="tblReset">恢复默认</button></div>
+      <div class="actions"><button class="btn" id="tblExport">导出 JSON</button><button class="btn" id="tblImport">导入 JSON</button><input id="tblFile" type="file" accept=".json,application/json" hidden></div>
+      <p id="menuMsg" class="err"></p>
+    </div></div>
+
+    <div id="scalePop" class="pop" hidden role="dialog" aria-label="音阶台阶"><div class="pop-scroll">
+      <div class="pop-head"><div><b id="scTitle">音阶台阶 · 力行表</b><small>哆来咪：一串从低到高的异步调制</small></div><button class="x" id="scClose" aria-label="关闭">✕</button></div>
+      <p class="hint" style="margin-top:0">在这个速度范围里铺一串载波恒定、从低到高的异步段（京急 1000 型 GTO 变频器的起步音）。会替换范围里原有的段。</p>
+      <div class="flds">
+        <label class="fld"><span class="lbl">速度范围</span><input id="scFrom" type="number" value="0" step="0.5" min="0"><em>–</em><input id="scTo" type="number" value="15" step="0.5" min="1"><i>km/h</i></label>
+        <div class="fld"><span class="lbl">音阶</span><select id="scKind" aria-label="音阶"></select><select id="scRoot" class="narrow" aria-label="主音"></select></div>
+        <label class="fld"><span class="lbl">音符</span><input id="scNotes" class="txt" type="text" spellcheck="false" autocomplete="off" aria-label="音符，用空格隔开" placeholder="C4 D4 E4 …"></label>
+        <label class="fld"><span class="lbl">音高按</span><select id="scBasis" aria-label="音符对应的是什么"><option value="heard">听到的音高（载波取一半）</option><option value="carrier">载波频率本身</option></select></label>
+      </div>
+      <p class="hint" id="scInfo"></p>
+      <div class="actions"><button class="btn primary" id="scGo" title="生成台阶，并从起点开始加速让你听一遍">生成并试听</button><button class="btn" id="scMake">只生成</button></div>
+      <p id="scMsg" class="err"></p>
+    </div></div>
+
+    <div id="plot">
+      <div class="legend" aria-hidden="true">
+        <span style="--h:var(--m-async)"><i></i>异步</span><span style="--h:var(--m-sync)"><i></i>同步 N 脉冲</span><span style="--h:var(--m-wide)"><i></i>宽 3 脉冲</span><span style="--h:var(--m-square)"><i></i>方波</span>
+        <span style="--h:#f4f8ff"><i></i>载波频率</span>
+      </div>
+      <svg id="rulerSvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="车速标尺：横轴是车速，两条泳道分别是力行表和制动表里每个速度段的调制方式"></svg>
+      <div id="laneLabels"></div>
+    </div>
+  </div>
+
+  <div class="row1">
+    <div class="blk speed">
+      <div class="cap"><span>车速</span></div>
+      <div class="spd"><b id="spdNum">0</b><i>km/h</i></div>
+      <div class="rpmbar" title="转子转速（颜色和 3D 里转子拖影的颜色一致）"><i id="rpmFill"></i></div>
+      <div class="rpmcap"><span>0</span><span>转子转速 rpm</span><span>6000</span></div>
+    </div>
+
+    <div class="blk stats">
+      <div class="cap"><span>状态</span></div>
+      <div class="chips">
+        <span class="chip st" id="stState">停车</span>
+        <span class="chip md" id="stMode"><i class="dot"></i><span id="stModeText">逆变器待机</span></span>
+      </div>
+      <dl class="kv">
+        <div><dt>基波 f₁</dt><dd><span id="sF1">—</span><i>Hz</i></dd></div>
+        <div><dt>载波</dt><dd><span id="sFc">—</span><i>Hz</i></dd></div>
+        <div><dt>电压 V₁</dt><dd><span id="sV1">—</span><i>%</i></dd></div>
+        <div><dt>同步转速 nₛ</dt><dd><span id="sNs">—</span><i>rpm</i></dd></div>
+        <div><dt>转子转速 nᵣ</dt><dd><span id="sNr">0</span><i>rpm</i></dd></div>
+        <div><dt id="sSlipL">转差率</dt><dd><span id="sSlip">—</span><i>%</i></dd></div>
+      </dl>
+    </div>
+
+    <div class="blk lever" id="lever" data-mode="coast">
+      <div class="cap"><span>主手柄</span><b id="lvName">N · 空档</b></div>
+      <div class="lv">
+        <button class="step" id="lvBrake" aria-label="多一档制动" title="多一档制动（↓ / S）">‹</button>
+        <div class="track" id="lvTrack" role="slider" tabindex="0" aria-label="主手柄" aria-valuemin="0" aria-valuemax="10" aria-valuenow="5" aria-valuetext="N 空档"><div class="thumb" id="lvThumb"><span id="lvThumbText">N</span></div></div>
+        <button class="step" id="lvPower" aria-label="多一档牵引" title="多一档牵引（↑ / W）">›</button>
+      </div>
+      <div class="lv-labels" id="lvLabels"></div>
+      <div class="lv-note"><span>← 制动</span><span>N 空档 · 逆变器仍运转，声音持续</span><span>牵引 →</span></div>
+    </div>
+
+    <div class="blk inv">
+      <div class="cap"><span>逆变器</span></div>
+      <button class="lamp on" id="btnInv" aria-pressed="true" title="逆变器开关：关掉就没有牵引力和声音"><i class="led"></i>逆变器<small>ON</small></button>
+      <div class="snd">
+        <button class="icon" id="btnSound" aria-label="声音开关" title="声音开 / 关（M）"></button>
+        <input id="vol" type="range" min="0" max="100" value="30" aria-label="音量">
+      </div>
+      <p class="tiny" id="soundNote">点一下页面启用声音</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 抽屉：电机、显示 ============ -->
+<aside id="drawer" hidden>
+  <div class="dr-head">
+    <div class="dr-tabs" id="drawerTabs"><button data-pane="motor" class="on">电机</button><button data-pane="view">显示</button></div>
+    <button class="x" id="drawerClose" aria-label="关闭">✕</button>
+  </div>
+  <div class="dr-body">
+    <section id="pane-motor">
+      <h2>电机类型</h2>
+      <div class="row"><select id="motorType"></select></div>
+      <div class="row"><select id="preset"></select></div>
+      <h2>电机定义（JSON，可编辑）</h2>
+      <p class="note">改极数、槽数、导条数、尺寸、传动比……点“应用”即可重建。新电机类型见 README。</p>
+      <textarea id="specText" spellcheck="false"></textarea>
+      <div class="actions"><button class="btn primary" id="applySpec">应用</button><button class="btn" id="resetSpec">恢复该类型默认</button></div>
+      <p id="specErr" class="err"></p>
+    </section>
+    <section id="pane-view" hidden>
+      <h2>转速怎么显示</h2>
+      <div class="row"><select id="rotMode">
+        <option value="compress">压缩映射（始终看得清）</option>
+        <option value="real">真实比例，慢放</option>
+      </select></div>
+      <div class="row" id="slowRow" hidden><input id="slow" type="range" min="0" max="100" step="1" value="45"><output id="slowOut"></output></div>
+      <p class="note" id="rotNote"></p>
+      <h2>画面</h2>
+      <label class="line"><input type="checkbox" id="optCut" checked> 剖开外壳</label>
+      <label class="line"><input type="checkbox" id="optField" checked> 气隙旋转磁场</label>
+      <label class="line"><input type="checkbox" id="optWinding" checked> 三相绕组</label>
+      <label class="line"><input type="checkbox" id="optRotCur" checked> 转子感应电流（异步）</label>
+      <label class="line"><input type="checkbox" id="optLabels" checked> 部件标注</label>
+      <div class="row"><span style="min-width:64px;color:var(--muted)">外壳透明</span><input id="shell" type="range" min="0.05" max="1" step="0.05" value="0.3"><output id="shellOut">30%</output></div>
+      <div class="actions"><button class="btn" id="resetView">重置视角</button><button class="btn" id="pause">暂停动画</button></div>
+      <h2>图例</h2>
+      <p class="note"><span style="color:var(--phA)">■</span> A 相（黄） <span style="color:var(--phB)">■</span> B 相（绿） <span style="color:var(--phC)">■</span> C 相（红）；气隙磁通 <span style="color:#ff8a3d">■</span> 向外、<span style="color:#3d8bff">■</span> 向内。槽里导体的亮暗：亮 = 电流流出，暗 = 流入；亮区绕圈走，就是旋转磁场。</p>
+    </section>
+  </div>
+</aside>
+
+<script src="vendor/three.min.js"></script>
+<script src="js/modes.js"></script>
+<script src="js/drive.js"></script>
+<script src="js/table.js"></script>
+<script src="js/synth.js"></script>
+<script src="js/motorkit.js"></script>
+<script src="js/motors/induction.js"></script>
+<script src="js/motors/pmsm.js"></script>
+<script src="js/motors/ipmsm.js"></script>
+<script src="js/scopes.js"></script>
+<script src="js/ruler.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
