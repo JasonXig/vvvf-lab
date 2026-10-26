@@ -9,7 +9,9 @@ Python desktop lab + a zero-install browser demo (open `web/index.html`).
 
 ## 试一试
 
-**网页版（推荐，不用装任何东西）**：下载本仓库，双击 `web/index.html`（Windows 上也可以双击 `run_web.bat`）。用 Chrome 或 Edge 打开（Edge 里测过；Firefox 和 Safari 没测过），点一下页面启用声音，推一下主手柄就能听到。
+**在线试玩**：https://jasonxig.github.io/vvvf-lab/
+
+**网页版（推荐，不用装任何东西）**：也可以下载本仓库，双击 `web/index.html`（Windows 上也可以双击 `run_web.bat`）。用 Chrome 或 Edge 打开（Edge 里测过；Firefox 和 Safari 没测过），点一下页面启用声音，推一下主手柄就能听到。
 
 - **主手柄**：B5 … B1、N、H、P1 … P4，拖动、点格子或用键盘（↑ ↓ / W S，空格回空档，H 定速）。松回空档，逆变器仍在运转，声音持续，音调随车速缓慢变化。
 - **模式标尺**：既是速度表，也是拖动跳速的滑杆，还是模式表的编辑器。上下两条泳道是力行表和制动表，每段按调制方式上色，白线是载波频率曲线；拖白色竖线跳到任意车速，拖分界线改速度范围，点一段改调制方式、载波频率或脉冲数，按“试听”马上听到。
