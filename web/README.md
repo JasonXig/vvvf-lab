@@ -1,186 +1,189 @@
-# VVVF Lab 网页版：运转台 · 3D 电机 · 声音
+# VVVF Lab web demo: cab deck · 3D motor · sound
 
-推一下主手柄，车速上去，3D 电机里的转子跟着转，同时听到逆变器的声音：载波、同步脉冲数、宽 3 脉冲一档一档换上去。每个速度段用什么调制方式，由你自己在标尺上改，改完马上能听到。
+Push the master controller and the train speeds up, the rotor in the 3D motor spins, and you hear the inverter: carrier, synchronous pulse count and wide 3-pulse step up one after another. Which modulation is used in every speed range is up to you: change it on the ruler and hear the result immediately.
 
-![笼型异步电机，牵引 P3：运转台、声谱图、开关波形](../docs/web_desk_induction.png)
+![Induction motor, power notch P3: cab deck, spectrogram, switching waveform](../docs/web_desk_induction.png)
 
-![点标尺上的一段：改调制方式、载波频率、脉冲数，按“试听”马上听到](../docs/web_ruler_editor.png)
+![Click a segment on the ruler: change the modulation kind, carrier frequency and pulse count, then press "Listen"](../docs/web_ruler_editor.png)
 
-![表贴式永磁同步电机，制动 B3：当前车速落在制动表的哪一段，一眼可见](../docs/web_desk_pmsm_brake.png)
+![Surface-mounted PM synchronous motor, brake notch B3: you can see at a glance which segment of the brake table the current speed falls in](../docs/web_desk_pmsm_brake.png)
 
-## 打开
+## Opening it
 
-双击 [index.html](index.html)，或者双击上一级的 `run_web.bat`。不需要服务器，也不需要联网：three.js r159（MIT）已经放在 `vendor/`。浏览器控制台里会有一条 three.js 的“脚本版已弃用”提示，属于正常。
+**Live demo:** https://jasonxig.github.io/vvvf-lab/
 
-**声音要先点一下页面**：浏览器规定，必须有一次点击或按键，才允许网页发声。随便点一下页面，或者直接拨手柄就行，运转台右下角会告诉你声音是否已启用。默认音量 30%，戴耳机请先确认。
+Or double-click [index.html](index.html), or double-click `run_web.bat` one level up. No server and no internet are needed: three.js r159 (MIT) is already in `vendor/`. The browser console shows one three.js "script build is deprecated" notice, which is normal.
 
-第一次打开会有一张“怎么玩”的提示卡片，右上角的 `?` 可以随时再叫出来。
+**Click the page once to enable sound.** Browsers only let a page make sound after a click or key press. Click anywhere, or just move the controller; the bottom-right of the cab deck tells you whether sound is on. The default volume is 30%; check it before putting on headphones.
 
-网址参数可以直接打开到某个状态：
+The first time you open it there is a "How to play" card; the `?` at the top brings it back at any time.
 
-| 参数 | 含义 | 例子 |
+URL parameters open the page in a given state:
+
+| Parameter | Meaning | Example |
 | --- | --- | --- |
-| `type` | 电机类型：`induction`、`pmsm`、`ipmsm` | `?type=pmsm` |
-| `speed` | 车速 km/h | `?speed=60` |
-| `notch` | 手柄档位：`B5`…`B1`、`N`、`H`、`P1`…`P4` | `?notch=P3` |
-| `map` | 把力行表、制动表都换成某个预设：`reference`、`gto`、`igbt`、`scale` | `?map=igbt` |
-| `cut` | `0` 表示不剖开外壳 | `?cut=0` |
-| `demo` | `1` 表示自动演示 | `?demo=1` |
-| `coach` | `0` 表示不显示新手提示 | `?coach=0` |
-| `worklet` | `0` 表示不用 AudioWorklet，强制走备用方式（测试用） | `?worklet=0` |
-| `pedal` | 旧版参数，`power` 等于 P4，`brake` 等于 B3 | `?pedal=power` |
+| `type` | Motor type: `induction`, `pmsm`, `ipmsm` | `?type=pmsm` |
+| `speed` | Vehicle speed in km/h | `?speed=60` |
+| `notch` | Controller notch: `B5`…`B1`, `N`, `H`, `P1`…`P4` | `?notch=P3` |
+| `map` | Replace both the power and brake tables with a preset: `reference`, `gto`, `igbt`, `scale` | `?map=igbt` |
+| `cut` | `0` means do not cut away the housing | `?cut=0` |
+| `demo` | `1` starts the automatic demo | `?demo=1` |
+| `coach` | `0` hides the first-run tips | `?coach=0` |
+| `worklet` | `0` skips AudioWorklet and forces the fallback (for testing) | `?worklet=0` |
+| `pedal` | Old parameter: `power` is P4, `brake` is B3 | `?pedal=power` |
 
-## 运转台
+## The cab deck
 
-界面下方是一整条运转台，从上到下、从左到右：
+The strip at the bottom is the cab deck. Top to bottom, left to right:
 
-### 主手柄
+### Master controller
 
-横向的滑轨，左边是制动，中间是空档，右边是牵引。**拖动手柄、点某个格子、点两端的 ‹ › 按钮，或者用键盘**：`↑` / `W` 加一档牵引，`↓` / `S` 加一档制动，`空格` 回到空档 N，`H` 定速。拨了就留在那一档，不用一直按住。
+A horizontal rail: brake on the left, neutral in the middle, power on the right. **Drag the handle, click a notch, click the ‹ › buttons at the ends, or use the keyboard:** `↑` / `W` one notch towards power, `↓` / `S` one notch towards braking, `Space` back to neutral N, `H` hold speed. The controller stays where you put it; there is nothing to hold down.
 
-| 档位 | 含义 |
+| Notch | Meaning |
 | --- | --- |
-| P1 – P4 | 牵引。加速度是满档的 25% / 50% / 75% / 100%；转差、磁场和电流也按这个比例 |
-| H | 定速：牵引力刚好抵消阻力，车速保持不变，适合停在某个速度段仔细听 |
-| **N** | **空档：不牵引，车慢慢减速，但逆变器仍在运转（零转矩，转差为零，只维持磁场），所以声音持续**，音调跟着车速缓慢变化，一直到车快停下来才安静 |
-| B1 – B5 | 制动。B5 是满档（3.5 km/h/s），B1 是 20% |
+| P1 – P4 | Power. Acceleration is 25% / 50% / 75% / 100% of the full notch; slip, field and current scale the same way |
+| H | Hold: the tractive effort exactly cancels the resistance and the speed stays constant, good for parking at one speed range and listening carefully |
+| **N** | **Neutral: no traction and the train slowly decelerates, but the inverter keeps running (zero torque, zero slip, only maintaining the field), so the sound continues**; the pitch follows the speed slowly and only goes quiet when the train is almost stopped |
+| B1 – B5 | Braking. B5 is the full notch (3.5 km/h/s), B1 is 20% |
 
-两个方向同时按，制动优先。
+If both directions are pressed at once, braking wins.
 
-> **为什么空档时声音还在**：真实车辆惰行时，多数会让逆变器停止开关，声音也就没了。这个页面是学习和试听用的，所以让空档时逆变器保持零转矩运转，这样你可以把车停在任何一个速度段，一直听下去。逆变器开关（见下）关掉才是真正的“没有牵引、没有声音”。车停稳以后（基波频率低于 0.5 Hz）声音自然消失，因为频率为零，没有东西可听。
+> **Why the sound is still there in neutral:** on a real train the inverter usually stops switching when coasting, and the sound is gone. This page is for learning and listening, so in neutral the inverter keeps running at zero torque. That way you can park the train in any speed range and keep listening. Switching the inverter off (see below) is what really means "no traction, no sound". Once the train has almost stopped (fundamental frequency below 0.5 Hz) the sound fades away naturally, because at zero frequency there is nothing to hear.
 
-车速怎么变（演示用的简化模型）：牵引时 40 km/h 以内恒加速度，过了 40 km/h 恒功率（加速度随速度反比下降）；制动按档位；另有随速度增大的运行阻力。
+How the speed changes (a simplified demo model): under power, constant acceleration up to 40 km/h and constant power above that (acceleration falls in inverse proportion to speed); braking follows the notch; plus a running resistance that grows with speed.
 
-### 模式标尺：速度表、滑杆、模式表编辑器三合一
+### Mode ruler: speedometer, slider and mode-table editor in one
 
-横轴是车速 0–160 km/h，上面一条泳道是**力行表**，下面一条是**制动表**。每一段按调制方式上色（青 = 异步，靛 = 同步 N 脉冲，品红 = 宽 3 脉冲，琥珀 = 方波），段里的**白线是载波频率随车速变化的曲线**（也就是音高），线上的亮点是此刻的位置。
+The horizontal axis is vehicle speed from 0 to 160 km/h. The upper lane is the **power table**, the lower lane the **brake table**. Each segment is coloured by modulation kind (teal = async, indigo = sync N pulses, magenta = wide 3-pulse, amber = square wave). The **white line inside is carrier frequency against speed** (which is the pitch), and the dot on it is where you are now.
 
-- **竖线是当前车速**。拖它，或者在标尺上任意位置按住拖动，车速直接跳过去，声音和 3D 电机跟着变；松手后车继续按当前手柄档位走（空档就继续发声）。
-- **拖两段之间的分界线**，改速度范围（取整到 0.5 km/h，不会越过相邻的分界线）。
-- **点一段**，弹出编辑框：
-  - 调制方式：异步、同步、宽 3、方波；
-  - 速度上限（最后一段延伸到最高速度，不能改）；
-  - 异步：载波的起点、终点频率，段内线性变化；同步：脉冲数 N（3–99 的奇数）；
-  - ◀ ▶ 切到上一段 / 下一段，“拆分”把一段一分为二，“删除”并入相邻段；
-  - **▶ 试听**：力行表里跳到这一段中间并定速；制动表里跳到这一段的高速端，用最轻的制动缓缓滑过。
-  - 改错了（比如速度上限比上一段还小，脉冲数是偶数）会提示原因，原来的表不会变。
-- **泳道左边的 ♪**：音阶台阶，一键铺出“哆来咪”，见下一节。
-- **泳道左边的 ⋯**：预设（参考界面示例、GTO 型、IGBT 型、音阶式异步）、电压曲线（满调制、满电压两个车速，标尺上的虚线就是它们）、复制到另一张表、恢复默认、导出 / 导入 JSON。表自动保存在浏览器里（localStorage），下次打开还在。
+- **The vertical line is the current speed.** Drag it, or press and drag anywhere on the ruler, and the speed jumps there while the sound and the 3D motor follow. After you let go the train carries on with the current notch (in neutral the sound keeps going).
+- **Drag the boundary between two segments** to change the speed range (rounded to 0.5 km/h; it cannot cross a neighbouring boundary).
+- **Click a segment** to open the editor:
+  - modulation kind: async, sync, wide 3, square;
+  - speed limit (the last segment extends to the top speed and cannot be changed);
+  - async: start and end carrier frequency, linear within the segment; sync: pulse count N (an odd number from 3 to 99);
+  - ◀ ▶ move to the previous / next segment, "Split" cuts a segment in two, "Delete" merges it into its neighbour;
+  - **▶ Listen**: in the power table, jump to the middle of the segment and hold the speed; in the brake table, jump to its high-speed end and glide through with the lightest braking.
+  - If you get something wrong (a speed limit below the previous one, an even pulse count) it tells you why and the table is left unchanged.
+- **♪ beside a lane name**: scale steps, lay "do re mi" in one click; see the next section.
+- **⋯ beside a lane name**: presets (reference example, GTO type, IGBT type, scale-style async), the voltage curve (the two speeds for full modulation and full voltage, shown as dashed lines on the ruler), copy to the other table, reset, export / import JSON. Tables are saved in the browser (localStorage) and are still there next time.
 
-### 在不同速度下加调制：以京急 1000 型的“哆来咪”为例
+### Adding modulations at different speeds: the Keikyu 1000 "do re mi" as an example
 
-想在前 15 km/h 里从低到高加 7 级异步调制，有两种办法。
+Say you want 7 more rising asynchronous steps in the first 15 km/h. There are two ways.
 
-**办法一：音阶台阶（推荐）**。点力行泳道名旁边的 **♪**，填好：
+**Way 1: scale steps (recommended).** Click the **♪** beside the Power lane name and fill in:
 
-| 项目 | 默认值 | 说明 |
+| Item | Default | Notes |
 | --- | --- | --- |
-| 速度范围 | 0 – 15 km/h | 在这个范围里铺台阶，**替换**范围里原有的段，范围外的段原样保留（跨过边界的段被截断，异步斜坡在截断处按线性插值，曲线不跳变） |
-| 音阶、主音 | 大调、C4 | 大调（do re mi fa sol la ti do）、自然小调、五声音阶、半音阶；主音 C3 – B5 |
-| 音符 | `C4 D4 E4 F4 G4 A4 B4 C5` | 选了音阶会自动填好，也可以自己改：音名（`C4`、`F#3`、`Bb4`）或直接写频率（`523`），用空格隔开，想要几级就写几个音 |
-| 音高按 | 听到的音高 | 见下面的说明 |
+| Speed range | 0 – 15 km/h | The steps are laid over this range and **replace** the segments in it; segments outside are kept as they were (a segment crossing the boundary is truncated, and an async ramp is linearly interpolated at the cut, so the curve does not jump) |
+| Scale, root | Major, C4 | Major (do re mi fa sol la ti do), natural minor, pentatonic, chromatic; root C3 – B5 |
+| Notes | `C4 D4 E4 F4 G4 A4 B4 C5` | Filled in when you pick a scale; you can also edit it: note names (`C4`, `F#3`, `Bb4`) or plain frequencies (`523`), separated by spaces, as many steps as notes |
+| Pitch as | Heard pitch | See the note below |
 
-点 **生成并试听**：表里立刻多出 8 级载波恒定、从低到高的异步段，页面从起点开始用 P4 加速，台阶依次响一遍，声谱图里是一级一级往上走的阶梯。**只生成** 则只改表不动车。制动表（下面一条泳道）也能铺，试听时从终点开始用 B2 减速，音阶是倒着下来的。
+Press **Generate and listen**: the table immediately gains 8 constant-carrier asynchronous segments rising from low to high, and the page accelerates from the start with P4 so the steps sound one after another; in the spectrogram they are a staircase going up. **Generate only** changes the table without moving the train. The brake table (the lower lane) can be done too; listening then starts at the end with B2, so the scale comes down.
 
-![点 ♪：前 15 km/h 铺 8 级台阶，声谱图里是一级一级的阶梯](../docs/web_scale_doremi.png)
+![Click ♪: 8 steps laid over the first 15 km/h, a staircase in the spectrogram](../docs/web_scale_doremi.png)
 
-> **为什么“音高按听到的音高”时载波只取一半**：三相线电压里载波本身（fc）是抵消掉的，剩下的两组主要谱线是 **fc ± 2f₁**（强度约正比于调制比 m²）和 **2fc ± f₁**（约正比于 m）。m 小的时候后一组强得多，所以听到的音高约是载波的 2 倍：想听到 C4（262 Hz），载波就设成 131 Hz。选“载波频率本身”则按你写的数字直接当载波。
+> **Why the carrier is only half of the heard pitch with "Pitch as heard pitch":** in the three-phase line voltage the carrier itself (fc) cancels, and the two main groups of lines left are **fc ± 2f₁** (strength roughly proportional to the modulation index squared) and **2fc ± f₁** (roughly proportional to m). When m is small the second group is much stronger, so the pitch you hear is about twice the carrier: to hear C4 (262 Hz) set the carrier to 131 Hz. With "Carrier frequency itself" the numbers you write are used as the carrier directly.
 >
-> 两组一样响的地方在 **m ≈ 0.7**（默认的电压曲线下约 27 km/h，按电流纹波随频率衰减算）；再往上较低的一组更响，听到的音高就掉回载波本身。所以台阶要铺在低速段，前 15 km/h 正合适。
+> The two groups are equally loud at **m ≈ 0.7** (about 27 km/h with the default voltage curve, counting the ripple current falling with frequency); above that the lower group is louder and the heard pitch drops back to the carrier itself. So put the steps in the low-speed range; the first 15 km/h is just right.
 >
-> 实测（默认的 8 级，P4 加速通过）：每一级声谱里最强的谱线和目标音相差 0.5% – 4%，偏低是因为最强的是 2fc − f₁ 那条边带；两条边带之间的拍频（2f₁）就是逆变器声音特有的粗糙感。
+> Measured (the default 8 steps, accelerating through with P4): the strongest line in each step's spectrum is within 0.5% – 4% of the target note, slightly low because the strongest is the 2fc − f₁ sideband; the beating between the two sidebands (2f₁) is the roughness typical of inverter sound.
 >
-> 点任意一级，编辑框里会写出这一级“听到的音高约多少 Hz（最接近的音名和音分偏差）”，方便手动调。
+> Click any step and the editor shows "heard pitch about N Hz (nearest note name and cents deviation)", which helps with manual tuning.
 
-**办法二：手工**。点第一段（0 – 34.5 km/h 异步 1050 Hz）→ 把“速度上限”改成 15 → 点“拆分”把它一分为二，再对每一半继续拆分……每一级单独选中，改载波的起点和终点（两格填同一个数就是恒定载波）。8 级要拆 7 次、填 16 个数，所以才做了办法一。现成的 **音阶式异步** 预设（⋯ 菜单里载入）是同样的东西：听到的音高 C4 – C5，每 2.5 km/h 一级，铺在 0 – 20 km/h。
+**Way 2: by hand.** Click the first segment (0 – 34.5 km/h async 1050 Hz) → set its "speed limit" to 15 → press "Split" to cut it in two, then keep splitting each half… select each step on its own and set the start and end carrier (the same number in both boxes is a constant carrier). 8 steps take 7 splits and 16 numbers, which is why way 1 exists. The ready-made **scale-style async** preset (load it from the ⋯ menu) is the same thing: heard pitch C4 – C5, one step per 2.5 km/h, laid over 0 – 20 km/h.
 
-**真实的京急 1000 型**用的是西门子 GTO 变频器，实际的音高和每一级的车速范围我没有数据；这里的“哆来咪”是按大调音阶铺的示意，每级车速和音高都可以自己调，等有录音可以对照时再校准。
-- 泳道里亮起来的那一段，就是此刻逆变器正在用的；亮得更强、带光晕，表示逆变器正在开关。
+**The real Keikyu 1000** used a Siemens GTO inverter, and I have no data on its actual pitches or the speed range of each step; the "do re mi" here is a sketch laid out as a major scale. The speed and pitch of every step can be changed, and it can be calibrated once there is a recording to compare with.
 
-### 读数、逆变器、声音
+The segment lit up in a lane is the one the inverter is using right now; the brighter, glowing state means the inverter is switching.
 
-- **车速**和下面的转速条（颜色和 3D 里转子拖影的颜色是同一套：蓝 → 青 → 绿 → 黄 → 红）。
-- **状态**：力行 / 空档惰行 / 定速 / 制动 / 停车，以及当前调制方式；逆变器不工作时说明原因（逆变器已关、再生制动已退出、逆变器待机）。六个读数：基波频率 f₁、载波、电压 V₁（以方波为 100%）、同步转速、转子转速、转差率。
-- **逆变器**灯：关掉就没有牵引力，也没有再生制动：牵引和定速只能惰行，制动只剩机械制动（没有声音，磁场也消失）。再生制动在基波频率低于 1 Hz 时退出，由机械制动接手。
-- **喇叭**和音量条只管声音，不影响车。快捷键 `M` 静音。
-- 右上角：**声谱图**（最近 7 秒，纵轴 0–4 kHz，能直接看到载波的平线、同步时的斜线）和**开关波形**（A 相桥臂的 ±1 输出，带参考正弦和三角载波，一眼看出“几个脉冲”；异步载波太密时放大看 30 个载波周期）。声谱图下面的细条是响度，没有声音时一动不动。
-- 左上角：**电机**（类型、JSON 电机定义）、**显示**（转速显示方式、画面选项）、**演示**（自动：P4 加速到 120 km/h → 空档惰行 4 秒 → B3 制动停车 → 循环，碰一下手柄或标尺就停）、**?**（怎么玩）。`P` 暂停动画。
+### Readouts, inverter, sound
 
-窄屏（手机竖屏）时，运转台变成底部抽屉，电机在上面，编辑框排在标尺上方；手柄和标尺都支持触摸拖动。
+- **Speed** and the bar below it (the colour is the same set as the blur on the rotor in 3D: blue → cyan → green → yellow → red).
+- **Status**: Power / Neutral / Hold / Brake / Stopped, and the current modulation; when the inverter is not running it says why (inverter off, regenerative brake released, inverter standby). Six readouts: fundamental frequency f₁, carrier, voltage V₁ (a square wave is 100%), synchronous speed, rotor speed, slip ratio.
+- **Inverter lamp**: off means no tractive effort and no regenerative braking: power and hold can only coast, and braking is mechanical only (no sound, and the field disappears too). Regenerative braking is released below 1 Hz of fundamental frequency and handed over to mechanical braking.
+- **Speaker** and volume bar affect only the sound, not the train. `M` mutes.
+- Top right: the **spectrogram** (last 7 seconds, 0–4 kHz vertically, so you can see the flat carrier line and the slanting synchronous lines) and the **switching waveform** (the ±1 output of the phase-A leg with the reference sine and triangle carrier, so you can see "how many pulses" at a glance; when the async carrier is too dense it zooms in to 30 carrier periods). The thin bar under the spectrogram is loudness and does not move when there is no sound.
+- Top left: **Motor** (type, JSON motor definition), **Display** (how speed is shown, scene options), **Demo** (automatic: accelerate with P4 to 120 km/h → neutral coasting for 4 s → brake to a stop with B3 → repeat; touching the controller or the ruler stops it), **?** (how to play). `P` pauses the animation.
 
-<img src="../docs/web_phone.png" width="260" alt="手机竖屏：电机在上，运转台是底部抽屉">
+On a narrow screen (phone portrait) the cab deck becomes a bottom sheet with the motor above it and the editor above the ruler; the controller and the ruler both support touch dragging.
 
-小笔记本屏幕（1280×720、1024×640）上运转台会压扁，给电机留出地方。
+<img src="../docs/web_phone.png" width="260" alt="Phone portrait: the motor on top, the cab deck as a bottom sheet">
 
-## 模式表：什么速度用什么调制
+On small laptop screens (1280×720, 1024×640) the cab deck is squashed to leave room for the motor.
 
-每张表按车速分成若干段：
+## Mode tables: which modulation at which speed
 
-| 方式 | 含义 |
+Each table is split into segments by vehicle speed:
+
+| Kind | Meaning |
 | --- | --- |
-| 异步 | 载波频率固定或在这一段里线性变化（起点、终点频率可以不同），与基波频率无关 |
-| 同步 N 脉冲 | 载波锁定在基波上，每个基波周期正好 N 个脉冲，载波频率 = N × 基波频率。N 必须是 3–99 的奇数 |
-| 宽 3 脉冲 | N = 3 的同步调制，并随电压曲线一直进入过调制 |
-| 单脉冲（方波） | 每个基波周期一个脉冲，电压最大 |
+| Async | The carrier frequency is fixed or varies linearly within the segment (start and end frequency may differ), independent of the fundamental frequency |
+| Sync N pulses | The carrier is locked to the fundamental with exactly N pulses per fundamental period, so carrier frequency = N × fundamental. N must be an odd number from 3 to 99 |
+| Wide 3-pulse | Synchronous modulation with N = 3, going into overmodulation along the voltage curve |
+| Single pulse (square wave) | One pulse per fundamental period, maximum voltage |
 
-- **电压曲线**：基波电压按 V/f 随车速线性上升，到“满调制”车速参考波幅值为 1，到“满电压”车速等效于方波。调制比由这条曲线和脉冲数一起决定。
-- **预设**：`参考界面示例`（异步 1050 Hz → 9 脉冲 → 宽 3 脉冲，默认）、`GTO 型`（开关频率上限 420 Hz）、`IGBT 型`（1.5 kHz）、`音阶式异步`（0 – 20 km/h 里每 2.5 km/h 升一级，听到的音高 C4 – C5，哆来咪）。GTO / IGBT 是把 Python 版 `modes.py` 的“基波频率分段”按当前传动参数换算成车速分段。
-- 力行表和制动表是两张独立的表（标尺上的两条泳道）；N、H 档用力行表。
+- **Voltage curve:** the fundamental voltage rises linearly with speed following V/f; at the "full modulation" speed the reference amplitude is 1, and at the "full voltage" speed it equals a square wave. The modulation index is determined by this curve together with the pulse count.
+- **Presets:** `Reference example` (async 1050 Hz → 9 pulses → wide 3-pulse, the default), `GTO type` (switching limit 420 Hz), `IGBT type` (1.5 kHz), `Scale-style async` (one step per 2.5 km/h over 0 – 20 km/h, heard pitch C4 – C5, do re mi). The GTO / IGBT tables are the Python `modes.py` "split by fundamental frequency" converted to vehicle speed with the current drivetrain parameters.
+- The power and brake tables are two independent tables (the two lanes on the ruler); N and H use the power table.
 
-## 声音是怎么来的
+## How the sound is made
 
 ```
-模式表 ─→ 工作点（调制方式、基波频率 f1、调制比 m、载波）
-              │  每帧发给音频线程
-              ▼
-   三相开关波形（正弦–三角比较，边沿位置精确）
-              ▼
-   电流纹波 = ∫（相电压 − 基波）dt        ← 假设磁励力正比于电流谐波
-              ▼
-   100 Hz 高通 → tanh 软限幅 → 音量 → 喇叭
+mode table ─→ operating point (modulation kind, fundamental f1, modulation index m, carrier)
+                 │  sent to the audio thread every frame
+                 ▼
+   three-phase switching waveform (sine-triangle comparison, exact edge positions)
+                 ▼
+   current ripple = ∫(phase voltage − fundamental) dt        ← assumes magnetic force ∝ current harmonics
+                 ▼
+   100 Hz high-pass → tanh soft limiter → volume → speaker
 ```
 
-- 合成核心 [js/synth.js](js/synth.js) 是 Python 版 `vvvflab/synth.py` 的移植，在 AudioWorklet 里实时运行；开关边沿按“交叉点折算面积”处理，不靠过采样，Node 里约 20 倍实时。
-- 三相每一相的载波锁在自己的参考波上，所以 N 不必是 3 的倍数，三相仍严格互差 120°。
-- **直接双击打开（`file://`）时**，Chromium 不允许用 Blob 地址加载 worklet，所以改用 `data:` 地址；有服务器时两种都可以。万一浏览器连 AudioWorklet 都没有，会自动退到 ScriptProcessor（延迟稍大，声音相同）。
-- 异步转同步时先保持载波相位连续（不出咔嗒声），再在 40 ms 内把相位滑到对称位置（载波对准参考波过零点）。
-- **低脉冲数同步调制要校准**：载波比很大时“基波幅值 ≈ 参考波幅值 m”，脉冲数少了就不成立（三脉冲、m = 0.95 只有 0.64 的基波）。页面对 N ≤ 21 的同步段数值反解 m，让输出的基波等于电压指令，这样减掉基波时才减得干净，也更接近真实逆变器按脉冲数调整开关角度的做法。
-- **这是模型，不是录音**：声音取电流纹波作为磁励力的代理量，谱线位置（`fc ± 2f1`、`2fc ± f1`、同步时的 `(N ± 2)f1` 等）由开关波形严格决定，已用独立公式和 Python 版核对；但**响度和音色的真实感还没有拿真实车辆录音对比过**，听起来像不像，是下一步要靠耳朵和录音检验的。
+- The synthesis core [js/synth.js](js/synth.js) is a port of the Python `vvvflab/synth.py`, running in real time inside an AudioWorklet; switching edges are handled by "converting the crossing into an area", with no oversampling, about 20 times real time in Node.
+- Each phase carrier is locked to its own reference, so N does not have to be a multiple of 3 and the three phases are still exactly 120° apart.
+- **When opened by double-click (`file://`)** Chromium does not allow a worklet to be loaded from a Blob URL, so a `data:` URL is used instead; with a server both work. If a browser has no AudioWorklet at all it falls back to ScriptProcessor (slightly more latency, same sound).
+- When going from asynchronous to synchronous the carrier phase is first kept continuous (no click) and then glided to the symmetric position within 40 ms (the carrier aligned with the zero crossing of the reference).
+- **Synchronous modulation with few pulses needs calibration:** with a large carrier ratio "fundamental amplitude ≈ reference amplitude m", which fails with few pulses (3 pulses, m = 0.95 give only 0.64 of fundamental). For synchronous segments with N ≤ 21 the page back-solves m numerically so the output fundamental equals the voltage command; the fundamental is then subtracted cleanly, and it is closer to what a real inverter does by adjusting the switching angles per pulse count.
+- **This is a model, not a recording:** the sound uses current ripple as a proxy for the magnetic exciting force. The line positions (`fc ± 2f1`, `2fc ± f1`, `(N ± 2)f1` for synchronous, and so on) are fixed strictly by the switching waveform and have been cross-checked with independent formulas and the Python version; but **the realism of loudness and timbre has not been compared with recordings of real trains**, and whether it sounds right is something that needs ears and recordings.
 
-## 画面里每一样东西（3D 电机）
+## What everything in the 3D view is
 
-- **定子铁芯**：带槽的叠片。**槽里的彩色方条**是三相绕组的导体，黄、绿、红对应 A、B、C 相。方条的亮暗表示这一刻电流的方向（亮 = 流出，暗 = 流入），亮区绕着圈走，就是旋转磁场。
-- **气隙磁场**：转子表面的橙蓝光环，橙 = 磁通向外，蓝 = 向内，随旋转磁场转动。逆变器停止时磁场消失；空档时只有励磁，比牵引时弱。
-- **转子**：异步电机是铁芯 + 铜导条 + 端环，导条的颜色表示感应电流，转差越大越亮（空档时转差为零，导条是暗的）；永磁电机是 N / S 交替的磁钢。制动时旋转磁场比转子慢一个转差（异步），或者落后一个负载角（永磁）。
-- **轴端的浅色标记**：用来看转向和转速。
+- **Stator core:** the slotted laminations. **The coloured bars in the slots** are the conductors of the three-phase winding, yellow, green and red for phases A, B and C. Their brightness shows the current direction at this instant (bright = out, dark = in); the bright region travelling around the circle is the rotating field.
+- **Air-gap field:** the orange and blue ring on the rotor surface, orange = flux outward, blue = inward, turning with the rotating field. It disappears when the inverter is stopped; in neutral only the magnetizing field remains, weaker than under power.
+- **Rotor:** an induction motor is iron core + copper bars + end rings, the bar colour shows the induced current and is brighter with more slip (in neutral the slip is zero, so the bars are dark); a permanent-magnet motor has alternating N / S magnets. When braking the rotating field is one slip slower than the rotor (induction) or lags by a load angle (PM).
+- **The light marker on the shaft end:** for judging direction and speed.
 
-## 转速怎么显示
+## How the speed is shown
 
-真实转速在 130 km/h 时约 4500 rpm，也就是每秒 75 圈，60 帧的画面根本拍不清，还会出现“车轮倒转”的假象。所以有两种显示方式（在“显示”里切换）：
+The real speed at 130 km/h is about 4500 rpm, 75 revolutions per second, which a 60-frame picture cannot show, and it gives a "wagon-wheel" illusion. So there are two display modes (switch in "Display"):
 
-- **压缩映射（默认）**：每秒 1 圈以内按真实转速转；更快时对转速取对数压缩，转子逐渐变得模糊并出现拖影，同时转速条读真实值。转子与磁场之间的“转差”始终按真实比例画。
-- **真实比例慢放**：转子和磁场都按真实转速的固定比例放慢，倍数可调，用来看清楚转差到底是怎么回事。
+- **Compressed mapping (default):** up to 1 rev/s it follows the real speed; faster than that the speed is compressed logarithmically, the rotor gradually blurs and a streak appears, while the speed bar still reads the real value. The "slip" between rotor and field is always drawn to the real ratio.
+- **Real scale, slow motion:** the rotor and field are both slowed by a fixed ratio of the real speed, adjustable, for seeing what slip really is.
 
-## 电机定义（JSON）
+## Motor definition (JSON)
 
-“电机”抽屉里的“电机定义”可以直接改，点“应用”重建；写错了会提示哪一项不合法，原来的电机不受影响。
+The "Motor definition" in the Motor drawer can be edited directly; press "Apply" to rebuild. If something is wrong it says which item is invalid and the existing motor is not affected.
 
-| 字段 | 含义 | 范围 |
+| Field | Meaning | Range |
 | --- | --- | --- |
-| `type` | 电机类型 | 已注册的类型 |
-| `poles` | 极数 | 2–16 的偶数 |
-| `statorSlots` | 定子槽数 | 不少于 3×极数，不超过 96 |
-| `length`、`outerRadius`、`boreRadius`、`slotDepth`、`airGap`、`shaftRadius`、`toothFraction` | 铁芯长度、定子外半径、膛径、槽深、气隙、轴半径、齿占槽距的比例 | 见报错提示 |
-| `rotorBars` | 笼型转子导条数（`induction`） | 8–80 |
-| `magnetCoverage`、`magnetThickness`、`loadAngleDeg` | 磁钢覆盖率、厚度、负载角（`pmsm`） | 见报错提示 |
-| `magnetWidth`、`magnetThickness`、`vAngleDeg`、`loadAngleDeg` | 磁钢宽度、厚度、V 形夹角、负载角（`ipmsm`） | 见报错提示 |
-| `drivetrain` | `wheelDiameter` 车轮直径、`gearRatio` 齿轮比，以及转差频率曲线 `slipLow`、`slipHigh`、`slipRiseFrom`、`slipRiseTo`（满力矩时的值，按手柄档位的比例缩小） | 默认 0.86 m、5.6 |
+| `type` | Motor type | A registered type |
+| `poles` | Number of poles | An even number from 2 to 16 |
+| `statorSlots` | Number of stator slots | At least 3×poles, at most 96 |
+| `length`, `outerRadius`, `boreRadius`, `slotDepth`, `airGap`, `shaftRadius`, `toothFraction` | Core length, stator outer radius, bore radius, slot depth, air gap, shaft radius, tooth fraction of the slot pitch | See the error message |
+| `rotorBars` | Number of rotor bars (`induction`) | 8–80 |
+| `magnetCoverage`, `magnetThickness`, `loadAngleDeg` | Magnet coverage, thickness, load angle (`pmsm`) | See the error message |
+| `magnetWidth`, `magnetThickness`, `vAngleDeg`, `loadAngleDeg` | Magnet width, thickness, V angle, load angle (`ipmsm`) | See the error message |
+| `drivetrain` | `wheelDiameter`, `gearRatio`, and the slip-frequency curve `slipLow`, `slipHigh`, `slipRiseFrom`, `slipRiseTo` (values at full torque, scaled down with the notch) | Defaults 0.86 m, 5.6 |
 
-改极数会同时改变同样车速下的基波频率，所以逆变器的调制方式和声音也会跟着变（极数越多，同样的速度需要的频率越高，音调整体上移），标尺上的载波曲线也会重新计算。
+Changing the number of poles also changes the fundamental frequency at the same speed, so the modulation and the sound change with it (more poles need a higher frequency for the same speed, and the pitch moves up overall); the carrier curves on the ruler are recomputed too.
 
-## 新增一种电机类型
+## Adding a motor type
 
-只需要新建一个文件，写转子；定子、绕组、外壳、气隙磁场、轴、拖影都沿用公共部件。[js/motors/ipmsm.js](js/motors/ipmsm.js) 就是一个完整的例子，大约 50 行。
+You only need to create one new file that writes the rotor; the stator, windings, housing, air-gap field, shaft and blur all reuse the shared parts. [js/motors/ipmsm.js](js/motors/ipmsm.js) is a complete example of about 50 lines.
 
 ```js
 // js/motors/mymotor.js
@@ -188,69 +191,69 @@
   const T = THREE, K = NS.MotorKit, P = K.palette, H = K.helpers;
 
   K.register('mymotor', {
-    label: '我的电机',                 // 下拉框里显示的名字
-    synchronous: true,                 // true = 没有转差（同步电机）；false = 异步电机
+    label: 'My motor',                 // the name shown in the drop-down
+    synchronous: true,                 // true = no slip (synchronous motor); false = induction motor
     defaults: { poles: 6, statorSlots: 36 },
-    presets: { '我的电机 · 6 极': { poles: 6, statorSlots: 36 } },
-    validate(spec, need, num) { /* 检查自己的参数，不合法就 need(false, '提示') */ },
+    presets: { 'My motor · 6 poles': { poles: 6, statorSlots: 36 } },
+    validate(spec, need, num) { /* check your own parameters; need(false, 'message') if invalid */ },
 
     buildRotor(ctx) {
-      // ctx.spec 是电机定义，ctx.g 是派生的几何（Rr 转子半径、L 长度、p 极对数……）
-      const group = new T.Group();     // 以 Z 为转轴，转子的所有部件都加到这里
-      // ……往 group 里加网格……
+      // ctx.spec is the motor definition, ctx.g is the derived geometry (Rr rotor radius, L length, p pole pairs ...)
+      const group = new T.Group();     // Z is the rotation axis; add all rotor parts to this
+      // ... add meshes to group ...
       return {
         group,
-        fadeMats: [/* 转得快时要淡化的材质 */],
-        labels: [{ text: '我的转子', pos: new T.Vector3(0.4, 0.3, 0.8) }],
-        update(state) { /* 每帧调用：state.rotorAngle、state.fieldAngle、state.slipAmp …… */ },
+        fadeMats: [/* materials to fade when it spins fast */],
+        labels: [{ text: 'My rotor', pos: new T.Vector3(0.4, 0.3, 0.8) }],
+        update(state) { /* called every frame: state.rotorAngle, state.fieldAngle, state.slipAmp ... */ },
       };
     },
   });
 })(window.VVVF3D);
 ```
 
-然后在 `index.html` 里、`app.js` 之前加一行 `<script src="js/motors/mymotor.js"></script>`，下拉框里就有了。
+Then add `<script src="js/motors/mymotor.js"></script>` to `index.html`, before `app.js`, and it is in the drop-down.
 
-每帧传给 `update` 的 `state`：
+The `state` passed to `update` every frame:
 
-| 字段 | 含义 |
+| Field | Meaning |
 | --- | --- |
-| `rotorAngle` | 转子的可视角度（rad） |
-| `fieldAngle` | 旋转磁场正极的机械角度（rad）；异步电机比转子多转（牵引）或少转（制动）一个“转差”，永磁电机比转子超前（牵引）或落后（制动）一个负载角 |
-| `polePairs` | 极对数 |
-| `currents` | 三相电流的标幺值 `[ia, ib, ic]`（逆变器停止时为 0） |
-| `power` | 0–1，逆变器输出的强度，停止时平滑降到 0，空档时约 0.3 |
-| `slipAmp` | 0–1，转差的大小（异步电机的转子感应电流用它） |
-| `blur`、`speedColor` | 转速拖影的程度与颜色 |
+| `rotorAngle` | Visual angle of the rotor (rad) |
+| `fieldAngle` | Mechanical angle of the positive pole of the rotating field (rad); for an induction motor it makes more (power) or fewer (braking) turns than the rotor by one "slip", for a PM motor it leads (power) or lags (braking) the rotor by one load angle |
+| `polePairs` | Number of pole pairs |
+| `currents` | Per-unit three-phase currents `[ia, ib, ic]` (0 when the inverter is stopped) |
+| `power` | 0–1, strength of the inverter output; falls smoothly to 0 when stopped, about 0.3 in neutral |
+| `slipAmp` | 0–1, size of the slip (used for the induced rotor current of an induction motor) |
+| `blur`, `speedColor` | Amount and colour of the speed blur |
 
-要换整个结构（外转子、轴向磁通、直线电机），在 `register` 里加 `parts: { stator, windings, housing, shaft, field }` 覆盖对应的公共部件，写法和默认实现一样，可以调用 `MotorKit.parts.xxx(ctx)` 复用。
+To replace the whole structure (outer rotor, axial flux, linear motor), add `parts: { stator, windings, housing, shaft, field }` to `register` to override the corresponding shared parts; write them like the default implementations, and call `MotorKit.parts.xxx(ctx)` to reuse them.
 
-## 代码结构
+## Code structure
 
-| 文件 | 内容 |
+| File | Contents |
 | --- | --- |
-| `js/modes.js` | Python `modes.py`（按基波频率分段的模式表）的 JavaScript 版 |
-| `js/drive.js` | 传动与转差、列车纵向动力学、手柄档位、逆变器什么时候运转的规则 |
-| `js/table.js` | 按车速分段的模式表：查表、V/f 曲线、过调制换算、低脉冲数同步的校准、检查、预设 |
-| `js/synth.js` | 声音合成核心（自成一体，可在 AudioWorklet 和 Node 里运行）和音频引擎 |
-| `js/motorkit.js`、`js/motors/` | 3D 电机的公共部件、类型注册表、各类转子 |
-| `js/scopes.js` | 声谱图、开关波形、响度条 |
-| `js/ruler.js` | 模式标尺：绘制、拖动跳速、拖分界线、编辑框、泳道菜单 |
-| `js/ui.js` | 运转台：主手柄、读数、逆变器与声音、键盘、抽屉、新手提示 |
-| `js/app.js` | 主程序：手柄 → 车速 → 工作点 → 声音与 3D |
+| `js/modes.js` | The JavaScript version of Python `modes.py` (mode maps split by fundamental frequency) |
+| `js/drive.js` | Drivetrain and slip, longitudinal train dynamics, controller notches, the rule for when the inverter is running |
+| `js/table.js` | Mode tables split by speed: lookup, V/f curve, overmodulation conversion, calibration of synchronous modulation with few pulses, validation, presets, scales and scale steps |
+| `js/synth.js` | The sound-synthesis core (self-contained, runs in an AudioWorklet and in Node) and the audio engine |
+| `js/motorkit.js`, `js/motors/` | Shared parts of the 3D motor, the type registry, the rotors |
+| `js/scopes.js` | Spectrogram, switching waveform, level bar |
+| `js/ruler.js` | The mode ruler: drawing, drag-to-jump, boundary dragging, editor, lane menus, scale steps |
+| `js/ui.js` | Cab deck: master controller, readouts, inverter and sound, keyboard, drawer, first-run tips |
+| `js/app.js` | Main program: controller → speed → operating point → sound and 3D |
 
-控制台里可以用 `window.VVVF3D.App`：`state` 是全部状态，`audio` 是音频引擎，`setSpeed(kmh)` 设车速，`setNotch('P3')` 拨手柄，`loadSpec(spec)` 载入电机定义。
+In the console you can use `window.VVVF3D.App`: `state` is the whole state, `audio` is the audio engine, `setSpeed(kmh)` sets the speed, `setNotch('P3')` moves the controller, and `loadSpec(spec)` loads a motor definition.
 
-## 测试
+## Tests
 
-逻辑层和声音合成核心都没有依赖浏览器，所以能在 Node 里跑，再和 Python 对账（没装 Node.js 时这两个文件自动跳过）：
+The logic layer and the sound-synthesis core do not depend on a browser, so they can run in Node and be cross-checked against Python (these two files are skipped automatically if Node.js is not installed):
 
-- `tests/test_web_logic.py`：模式表、传动、列车动力学、过调制换算与 Python 版、独立公式逐项对账；手柄档位表、转差与力矩成正比、各档位的加减速、**空档和定速时逆变器仍在运转（声音持续）**、逆变器关掉就没有牵引和声音；低脉冲数同步的校准用独立的 numpy 数值积分验证；脉冲数只能是奇数；音名与频率、音阶、**音阶台阶**（前 15 km/h 铺 8 级、替换范围外的载波曲线不能变、跨多段、铺到最高速度、各种不合理输入的提示）。
-- `tests/test_web_synth.py`：JS 合成与 Python `DriveSynth` 的最强谱线逐条比对（4% 以内）；异步边带、同步边带、三相平衡（N 不是 3 的倍数）、宽 3 脉冲时基波是否减干净；速度够不够实时。
+- `tests/test_web_logic.py`: mode tables, drivetrain, train dynamics, overmodulation conversion, all cross-checked against the Python version and independent formulas; the notch table, slip proportional to torque, acceleration of each notch, **the inverter keeps running in neutral and hold (so the sound continues)**, no traction or sound with the inverter off; the calibration of few-pulse synchronous modulation is verified with an independent numpy numerical integration; pulse counts must be odd; note names and frequencies, scales, and **scale steps** (8 steps over the first 15 km/h, the carrier curve outside the replaced range must not change, across several segments, up to the top speed, and the messages for unreasonable input).
+- `tests/test_web_synth.py`: the strongest lines of the JS synthesis against the Python `DriveSynth` one by one (within 4%); asynchronous sidebands, synchronous sidebands, three-phase balance (N not a multiple of 3), whether the fundamental is subtracted cleanly in wide 3-pulse; whether it is fast enough for real time.
 
-界面本身用无头 Edge（`file://`，通过 DevTools 协议发真实的鼠标、键盘、触摸事件）和应用内浏览器检查过：手柄点击和拖动、键盘、空档时声谱图里的谱线持续出现、标尺拖动跳速 / 点选一段 / 改调制和脉冲数 / 拖分界线 / 拆分删除 / 试听 / 泳道菜单、抽屉、演示、逆变器开关、手机触摸、AudioWorklet 加载（含 `file://`）、`?worklet=0` 备用方式、1400×860、1280×720、1024×640、平板和手机竖屏的布局。**没有验证过的**：真实 GPU 上的帧率、手机真机、扬声器里实际听到的效果。
+The UI itself was checked with headless Edge (`file://`, sending real mouse, keyboard and touch events over the DevTools protocol) and the in-app browser: controller clicks and dragging, keyboard, spectral lines in the spectrogram persisting in neutral, ruler drag-to-jump / selecting a segment / changing modulation and pulse count / dragging boundaries / split and delete / listen / lane menus, drawer, demo, inverter switch, phone touch, AudioWorklet loading (including `file://`), the `?worklet=0` fallback, and the layouts at 1400×860, 1280×720, 1024×640, tablet and phone portrait. **Not verified:** frame rate on a real GPU, a real phone, and what actually comes out of the speakers.
 
-## 和 Python 部分的关系
+## Relation to the Python part
 
-- `js/modes.js` 是 `vvvflab/modes.py` 的 JavaScript 版，`js/drive.js` 是传动与转差的简化模型。
-- 转差频率曲线目前是演示用的简化模型。等 Python 端有了 P2 的转矩–转差曲线和 P4 的列车闭环，页面会改为读取 Python 导出的数据（`App.setSpeed(kmh)` 和 `App.loadSpec(spec)` 已经留好）。
+- `js/modes.js` is the JavaScript version of `vvvflab/modes.py`, and `js/drive.js` is a simplified model of the drivetrain and slip.
+- The slip-frequency curve is currently a simplified demo model. Once the Python side has the torque–slip curve of P2 and the train closed loop of P4, the page will read data exported by Python instead (`App.setSpeed(kmh)` and `App.loadSpec(spec)` are already in place).

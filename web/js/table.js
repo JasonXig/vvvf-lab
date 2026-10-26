@@ -1,21 +1,21 @@
-// 模式表：按车速分段，每段指定调制方式。对应参考界面里的“0 – 34.5 km/h 异步 1050 Hz”这一类列表。
-// 一张表 = { name, maxSpeed, vBase, vFull, segments: [{ to, kind, fc0, fc1, n }] }
-//   to    这一段的速度上限 [km/h]（下限是上一段的上限，第一段从 0 开始，最后一段到 maxSpeed）
-//   kind  async 异步 | sync 同步 N 脉冲 | wide3 宽 3 脉冲 | square 单脉冲（方波）
-//   fc0/fc1  异步载波在这一段起点、终点的频率 [Hz]（线性变化）；n  同步脉冲数
-//   vBase  电压达到满调制（m = 1）的车速；vFull  电压达到最大（方波等效）的车速
+// Mode table: split by vehicle speed, each segment names a modulation kind. Corresponds to lists like "0 – 34.5 km/h  async 1050 Hz" in the reference UI.
+// A table = { name, maxSpeed, vBase, vFull, segments: [{ to, kind, fc0, fc1, n }] }
+//   to    speed limit of this segment [km/h] (the lower bound is the previous limit; the first segment starts at 0 and the last reaches maxSpeed)
+//   kind  async = asynchronous | sync = synchronous N pulses | wide3 = wide 3-pulse | square = single pulse (square wave)
+//   fc0/fc1  asynchronous carrier frequency at the start and end of the segment [Hz] (linear in between); n  synchronous pulse count
+//   vBase  speed at which the voltage reaches full modulation (m = 1); vFull  speed at which the voltage reaches its maximum (square-wave equivalent)
 (function (NS) {
   'use strict';
 
   const V1_SQUARE = 4 / Math.PI;
-  const M_CAP = 20; // 过调制时参考波幅值的上限，与 Python 版一致
-  const MIN_V = 0.08; // 起步时的最小电压（基波幅值）
-  const MIN_GAP = 0.5; // 相邻两段速度上限的最小间隔 [km/h]
+  const M_CAP = 20; // upper limit of the reference amplitude in overmodulation, same as the Python version
+  const MIN_V = 0.08; // minimum voltage when starting (fundamental amplitude)
+  const MIN_GAP = 0.5; // minimum spacing between the speed limits of two adjacent segments [km/h]
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
-  const KINDS = { async: '异步', sync: '同步', wide3: '宽 3 脉冲', square: '单脉冲（方波）' };
+  const KINDS = { async: 'Async', sync: 'Sync', wide3: 'Wide 3-pulse', square: 'Single pulse (square wave)' };
 
-  // ---- 过调制：基波幅值 ↔ 参考波幅值（与 vvvflab/pwm.py 对账） ----------------------------
+  // ---- Overmodulation: fundamental amplitude ↔ reference amplitude (cross-checked with vvvflab/pwm.py) ----------------
   function fundamentalFromReference(m) {
     if (m <= 1) return Math.max(0, m);
     return (2 / Math.PI) * (m * Math.asin(1 / m) + Math.sqrt(1 - 1 / (m * m)));
@@ -39,17 +39,17 @@
     return MG[lo] + ((v1 - VG[lo]) / (VG[hi] - VG[lo])) * (MG[hi] - MG[lo]);
   }
 
-  // ---- 低脉冲数的同步调制：反解参考波幅值 ---------------------------------------------------------
-  // 载波比很大时，基波幅值就是参考波幅值 m（过调制时用上面的公式换算）。脉冲数少了这个关系不成立：
-  // 三脉冲时 m = 0.95 只能给出 0.64 的基波。实际的逆变器会按脉冲数调整开关角度，让输出的基波等于电压指令，
-  // 所以这里数值地算出载波锁定在 φ = 0 时的实际基波，再反解 m，让它等于目标 v1。
-  // 载波比较高（N > SYNC_CAL_MAX_N）时两者差不到 1%，不必算。
+  // ---- Synchronous modulation with few pulses: back-solving the reference amplitude -------------------------------
+  // With a large carrier ratio the fundamental amplitude is just the reference amplitude m (use the formula above for overmodulation). That relation fails with few pulses:
+  // with 3 pulses m = 0.95 gives a fundamental of only 0.64. A real inverter adjusts the switching angles per pulse count so the output fundamental equals the voltage command,
+  // so here the actual fundamental with the carrier locked at φ = 0 is computed numerically and m is back-solved to make it equal the target v1.
+  // With a high carrier ratio (N > SYNC_CAL_MAX_N) the two differ by under 1%, so no calculation is needed.
   const SYNC_CAL_MAX_N = 21;
   function tri(x) {
     x -= Math.floor(x);
     return x < 0.25 ? 4 * x : x < 0.75 ? 2 - 4 * x : 4 * x - 4;
   }
-  // 采样间隔内输出的平均值（和 synth.js 的 area 一样：开关边沿按交叉点折算，不靠过采样）
+  // Average of the output over one sampling interval (same as area in synth.js: switching edges are located at the crossing point, with no oversampling)
   function pulseArea(dp, dc) {
     const sp = dp > 0 ? 1 : -1;
     const sc = dc > 0 ? 1 : -1;
@@ -57,13 +57,13 @@
     const x = dp / (dp - dc);
     return sp * x + sc * (1 - x);
   }
-  // N 个脉冲（奇数）、参考波幅值 m、载波相位 0 时，桥臂输出（±1）的基波幅值。
-  // 波形有四分之一周期对称性，只积分 0..π/2。
+  // Fundamental amplitude of the leg output (±1) for N pulses (odd), reference amplitude m and carrier phase 0.
+  // The waveform has quarter-wave symmetry, so only 0..π/2 is integrated.
   function syncFundamental(n, m) {
     const steps = Math.max(240, 24 * n);
     const h = Math.PI / 2 / steps;
     let acc = 0;
-    let dPrev = 0; // θ = 0：参考波和载波都是 0
+    let dPrev = 0; // θ = 0: the reference and the carrier are both 0
     for (let i = 1; i <= steps; i++) {
       const th = i * h;
       const d = m * Math.sin(th) - tri((n * th) / (2 * Math.PI));
@@ -78,7 +78,7 @@
     let m = syncCache.get(key);
     if (m !== undefined) return m;
     if (syncFundamental(n, M_CAP) <= v1) {
-      m = M_CAP; // 要的比最大能给的还大：给最大
+      m = M_CAP; // asked for more than the maximum available: give the maximum
     } else {
       let lo = 0;
       let hi = M_CAP;
@@ -94,7 +94,7 @@
     return m;
   }
 
-  // ---- 查表 ----------------------------------------------------------------------------------
+  // ---- Table lookup -----------------------------------------------------------------------------------------------
   function segmentIndex(t, v) {
     for (let i = 0; i < t.segments.length; i++) if (v < t.segments[i].to) return i;
     return t.segments.length - 1;
@@ -103,14 +103,14 @@
     return i === 0 ? 0 : t.segments[i - 1].to;
   }
 
-  // V/f：基波幅值先随车速线性上升，到 vBase 满调制，再过调制直到 vFull 达到方波的 4/π
+  // V/f: the fundamental amplitude rises linearly with speed, reaches full modulation at vBase, then overmodulates up to the 4/π of a square wave at vFull
   function v1Target(t, v) {
     if (v <= t.vBase) return Math.max(MIN_V, v / t.vBase);
     if (v >= t.vFull) return V1_SQUARE;
     return 1 + ((V1_SQUARE - 1) * (v - t.vBase)) / (t.vFull - t.vBase);
   }
 
-  // 只算载波频率（画模式标尺时每个车速都要算，不必反解调制比）
+  // Carrier frequency only (needed at every speed when drawing the mode ruler, no need to back-solve the modulation index)
   function carrierAt(t, v, f1) {
     const i = segmentIndex(t, v);
     const s = t.segments[i];
@@ -123,7 +123,7 @@
     return (s.kind === 'wide3' ? 3 : s.n) * f1;
   }
 
-  // 车速 v、基波频率 f1 对应的逆变器工作点
+  // Inverter operating point for speed v and fundamental frequency f1
   function operatingPoint(t, v, f1) {
     const i = segmentIndex(t, v);
     const s = t.segments[i];
@@ -143,35 +143,35 @@
     return (Math.round(x * 10) / 10).toFixed(1);
   }
   function describe(s) {
-    const hz = (x) => String(Math.round(x * 10) / 10); // 1050 而不是 1050.0
-    if (s.kind === 'async') return '异步 : ' + hz(s.fc0) + ' Hz – ' + hz(s.fc1) + ' Hz';
-    if (s.kind === 'sync') return '同步 : ' + s.n + ' 脉冲';
-    if (s.kind === 'wide3') return '同步 : 宽 3 脉冲';
-    return '单脉冲（方波）';
+    const hz = (x) => String(Math.round(x * 10) / 10); // 1050 rather than 1050.0
+    if (s.kind === 'async') return 'Async: ' + hz(s.fc0) + ' Hz – ' + hz(s.fc1) + ' Hz';
+    if (s.kind === 'sync') return 'Sync: ' + s.n + ' pulses';
+    if (s.kind === 'wide3') return 'Sync: wide 3-pulse';
+    return 'Single pulse (square wave)';
   }
 
-  // ---- 检查与整理 ----------------------------------------------------------------------------
+  // ---- Validation and normalization ------------------------------------------------------------------------------
   function validate(t) {
     const out = [];
-    if (!t || !Array.isArray(t.segments) || t.segments.length === 0) return ['至少要有一段'];
-    if (!(t.maxSpeed >= 20 && t.maxSpeed <= 400)) out.push('最高速度 maxSpeed 须在 20 到 400 km/h 之间');
+    if (!t || !Array.isArray(t.segments) || t.segments.length === 0) return ['At least one segment is required'];
+    if (!(t.maxSpeed >= 20 && t.maxSpeed <= 400)) out.push('maxSpeed must be between 20 and 400 km/h');
     let prev = 0;
     t.segments.forEach((s, i) => {
-      const tag = '第 ' + (i + 1) + ' 段：';
-      if (!KINDS[s.kind]) out.push(tag + '未知的调制方式 ' + s.kind);
-      if (!(s.to >= prev + MIN_GAP - 1e-9)) out.push(tag + '速度上限必须比上一段至少大 ' + MIN_GAP + ' km/h');
+      const tag = 'Segment ' + (i + 1) + ': ';
+      if (!KINDS[s.kind]) out.push(tag + 'unknown modulation kind ' + s.kind);
+      if (!(s.to >= prev + MIN_GAP - 1e-9)) out.push(tag + 'the speed limit must be at least ' + MIN_GAP + ' km/h above the previous segment');
       if (s.kind === 'async') {
         for (const k of ['fc0', 'fc1']) {
-          if (!(s[k] >= 20 && s[k] <= 20000)) out.push(tag + '异步载波须在 20 到 20000 Hz 之间');
+          if (!(s[k] >= 20 && s[k] <= 20000)) out.push(tag + 'the async carrier must be between 20 and 20000 Hz');
         }
       }
-      // 只允许奇数：偶数个脉冲会让正、负半周不对称，产生偶次谐波，实际的 VVVF 也从不这样用。
-      // 1 个脉冲就是方波，用“单脉冲”这一类。
-      if (s.kind === 'sync' && !(Number.isInteger(s.n) && s.n >= 3 && s.n <= 99 && s.n % 2 === 1)) out.push(tag + '同步脉冲数须是 3 到 99 的奇数（偶数会让正负半周不对称；1 个脉冲请选“单脉冲”）');
+      // Only odd counts are allowed: an even number of pulses makes the positive and negative half-cycles asymmetric and produces even harmonics; real VVVF never does that.
+      // A single pulse is a square wave: use the "single pulse" kind for it.
+      if (s.kind === 'sync' && !(Number.isInteger(s.n) && s.n >= 3 && s.n <= 99 && s.n % 2 === 1)) out.push(tag + 'the synchronous pulse count must be an odd number from 3 to 99 (an even count makes the half-cycles asymmetric; for 1 pulse choose "Single pulse")');
       prev = s.to;
     });
-    if (Math.abs(t.segments[t.segments.length - 1].to - t.maxSpeed) > 1e-6) out.push('最后一段必须延伸到最高速度 ' + t.maxSpeed + ' km/h');
-    if (!(t.vBase >= 1 && t.vBase < t.vFull && t.vFull <= t.maxSpeed)) out.push('电压曲线要满足 1 ≤ 满调制车速 < 满电压车速 ≤ 最高速度');
+    if (Math.abs(t.segments[t.segments.length - 1].to - t.maxSpeed) > 1e-6) out.push('The last segment must extend to the top speed ' + t.maxSpeed + ' km/h');
+    if (!(t.vBase >= 1 && t.vBase < t.vFull && t.vFull <= t.maxSpeed)) out.push('The voltage curve must satisfy 1 ≤ full-modulation speed < full-voltage speed ≤ top speed');
     return out;
   }
 
@@ -179,10 +179,10 @@
     return JSON.parse(JSON.stringify(t));
   }
 
-  // 去掉多余字段，补全缺省值
+  // Drop extra fields and fill in defaults
   function normalize(raw) {
     const t = {
-      name: String(raw.name || '未命名'),
+      name: String(raw.name || 'Untitled'),
       maxSpeed: Number(raw.maxSpeed || 160),
       vBase: Number(raw.vBase),
       vFull: Number(raw.vFull),
@@ -199,7 +199,7 @@
     return t;
   }
 
-  // ---- 从按基波频率写的旧模式表（modes.js）转成按车速写的表 ------------------------------------
+  // ---- Convert an old mode map written by fundamental frequency (modes.js) into a table written by speed ---------------
   function speedForF1(f1, polePairs, drive) {
     let lo = 0;
     let hi = 400;
@@ -227,69 +227,69 @@
     return t;
   }
 
-  // ---- 音阶：音名 ↔ 频率，以及“音阶台阶” ----------------------------------------------------------
-  // 异步调制时，载波每升一级，听到的音就升一级：在一段速度范围里铺一串载波恒定、从低到高的异步段，
-  // 加速时就是“哆来咪”（京急 1000 型 GTO 变频器的起步音）。
+  // ---- Scales: note names ↔ frequencies, and the "scale staircase" ---------------------------------------------------
+  // With asynchronous modulation, every step up in carrier is a step up in the pitch you hear: lay a run of asynchronous segments with constant, rising carriers over a speed range,
+  // and accelerating plays "do re mi" (the start-up sound of the Keikyu 1000 series GTO inverter).
   const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const NOTE_SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const NOTE_RE = /^([A-Ga-g])([#♯b♭]?)(-?\d)$/;
   const SCALES = {
-    major: { name: '大调（do re mi fa sol la ti do）', steps: [0, 2, 4, 5, 7, 9, 11, 12] },
-    minor: { name: '自然小调（la ti do re mi fa sol la）', steps: [0, 2, 3, 5, 7, 8, 10, 12] },
-    pentatonic: { name: '五声音阶（do re mi sol la do）', steps: [0, 2, 4, 7, 9, 12] },
-    chromatic: { name: '半音阶（13 个音）', steps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+    major: { name: 'Major (do re mi fa sol la ti do)', steps: [0, 2, 4, 5, 7, 9, 11, 12] },
+    minor: { name: 'Natural minor (la ti do re mi fa sol la)', steps: [0, 2, 3, 5, 7, 8, 10, 12] },
+    pentatonic: { name: 'Major pentatonic (do re mi sol la do)', steps: [0, 2, 4, 7, 9, 12] },
+    chromatic: { name: 'Chromatic (13 notes)', steps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
   };
 
-  // "C4"、"F#3"、"Bb4" → MIDI 音号（C4 = 60，A4 = 69）；不是音名就返回 NaN
+  // "C4", "F#3", "Bb4" → MIDI note number (C4 = 60, A4 = 69); NaN if it is not a note name
   function noteToMidi(text) {
     const m = NOTE_RE.exec(String(text).trim());
     if (!m) return NaN;
     const accidental = m[2] === '#' || m[2] === '♯' ? 1 : m[2] ? -1 : 0;
     return 12 * (Number(m[3]) + 1) + NOTE_SEMI[m[1].toUpperCase()] + accidental;
   }
-  const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12); // 十二平均律，A4 = 440 Hz
+  const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12); // twelve-tone equal temperament, A4 = 440 Hz
   function midiToName(midi) {
     return NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
   }
-  // 音名（C4、F#3、Bb4）或者直接写频率（523、523.25 Hz）→ 频率 [Hz]；认不出来返回 NaN
+  // Note name (C4, F#3, Bb4) or a plain frequency (523, 523.25 Hz) → frequency [Hz]; NaN if not recognized
   function noteFrequency(text) {
     const midi = noteToMidi(text);
     if (!isNaN(midi)) return midiToFreq(midi);
     const m = /^(\d+(?:\.\d+)?)\s*(?:hz)?$/i.exec(String(text).trim());
     return m ? Number(m[1]) : NaN;
   }
-  // 频率 → 最接近的音名，以及偏差（音分，±50 以内）
+  // Frequency → nearest note name, and the deviation (cents, within ±50)
   function nearestNote(freq) {
     const midi = 69 + 12 * Math.log2(freq / 440);
     const n = Math.round(midi);
     return { name: midiToName(n), cents: Math.round((midi - n) * 100) };
   }
-  // 主音 + 音阶 → 音名列表，例如 ("C4", "major") → C4 D4 E4 F4 G4 A4 B4 C5
+  // Root + scale → list of note names, e.g. ("C4", "major") → C4 D4 E4 F4 G4 A4 B4 C5
   function scaleNotes(root, scaleKey) {
     const base = noteToMidi(root);
     const sc = SCALES[scaleKey];
     return isNaN(base) || !sc ? [] : sc.steps.map((s) => midiToName(base + s));
   }
 
-  // 在 [from, to] km/h 里铺一串载波恒定的异步段（freqs 是每一级的载波频率，从前往后），
-  // 替换这个范围里原有的段，直接修改 t。范围外的旧段保留；跨过边界的段被截断，
-  // 异步斜坡在截断处按线性插值，所以曲线不会跳变。不合理的输入抛出带说明的 Error。
+  // Lay a run of asynchronous segments with constant carriers over [from, to] km/h (freqs is the carrier of each step, in order),
+  // replacing the existing segments in that range; modifies t in place. Old segments outside the range are kept; a segment crossing the boundary is truncated,
+  // and an asynchronous ramp is linearly interpolated at the cut, so the curve does not jump. Unreasonable input throws an Error with an explanation.
   function staircase(t, from, to, freqs) {
     const r1 = (x) => Math.round(x * 10) / 10;
     const lerp = (a, b, x) => a + (b - a) * x;
-    if (!freqs.length) throw new Error('至少要有一个音');
-    if (!freqs.every((f) => f >= 20 && f <= 20000)) throw new Error('载波频率须在 20 到 20000 Hz 之间');
+    if (!freqs.length) throw new Error('At least one note is required');
+    if (!freqs.every((f) => f >= 20 && f <= 20000)) throw new Error('Carrier frequency must be between 20 and 20000 Hz');
     from = r1(from);
     to = r1(to);
-    if (!(from >= 0 && to > from && to <= t.maxSpeed)) throw new Error('速度范围要满足 0 ≤ 起点 < 终点 ≤ ' + t.maxSpeed + ' km/h');
+    if (!(from >= 0 && to > from && to <= t.maxSpeed)) throw new Error('Speed range must satisfy 0 ≤ start < end ≤ ' + t.maxSpeed + ' km/h');
     const width = (to - from) / freqs.length;
-    const minWidth = MIN_GAP + 0.1; // 边界取整到 0.1，留一点余量，保证相邻分界线至少隔 MIN_GAP
-    if (width < minWidth - 1e-9) throw new Error('台阶太窄：每级只有 ' + Math.round(width * 100) / 100 + ' km/h，至少要 ' + minWidth + '。减少音数或加宽速度范围');
+    const minWidth = MIN_GAP + 0.1; // boundaries are rounded to 0.1, so leave a little margin to keep adjacent boundaries at least MIN_GAP apart
+    if (width < minWidth - 1e-9) throw new Error('Steps too narrow: each step is only ' + Math.round(width * 100) / 100 + ' km/h, at least ' + minWidth + ' is needed. Use fewer notes or a wider speed range');
     const out = [];
     t.segments.forEach((s, i) => {
       const a = segmentFrom(t, i);
       if (a >= from - 1e-9) return;
-      if (from - a < MIN_GAP - 1e-9) throw new Error('起点 ' + from + ' 离前一条分界线 ' + a + ' 太近（不到 ' + MIN_GAP + ' km/h），请把起点挪开一点');
+      if (from - a < MIN_GAP - 1e-9) throw new Error('The start ' + from + ' is too close to the previous boundary ' + a + ' (less than ' + MIN_GAP + ' km/h); move the start a little');
       const seg = Object.assign({}, s, { to: Math.min(s.to, from) });
       if (s.kind === 'async' && s.to > from) seg.fc1 = r1(lerp(s.fc0, s.fc1, (from - a) / (s.to - a)));
       out.push(seg);
@@ -297,7 +297,7 @@
     freqs.forEach((fc, k) => out.push({ to: k === freqs.length - 1 ? to : r1(from + width * (k + 1)), kind: 'async', fc0: fc, fc1: fc }));
     t.segments.forEach((s, i) => {
       if (s.to <= to + 1e-9) return;
-      if (s.to - to < MIN_GAP - 1e-9) throw new Error('终点 ' + to + ' 离后面的分界线 ' + s.to + ' 太近（不到 ' + MIN_GAP + ' km/h），请把终点挪开一点');
+      if (s.to - to < MIN_GAP - 1e-9) throw new Error('The end ' + to + ' is too close to the next boundary ' + s.to + ' (less than ' + MIN_GAP + ' km/h); move the end a little');
       const a = segmentFrom(t, i);
       const seg = Object.assign({}, s);
       if (s.kind === 'async' && a < to) seg.fc0 = r1(lerp(s.fc0, s.fc1, (to - a) / (s.to - a)));
@@ -307,11 +307,11 @@
     return t;
   }
 
-  // ---- 预设 ----------------------------------------------------------------------------------
-  // 哆来咪预设：听到的音高从 C4 到 C5，铺在 0–20 km/h（每级 2.5 km/h）；载波取听到音高的一半（原因见 ui 里的说明）
+  // ---- Presets -----------------------------------------------------------------------------------------------------
+  // The do-re-mi preset: heard pitch from C4 to C5, laid over 0–20 km/h (2.5 km/h per step); the carrier is half the heard pitch (see the explanation in the UI)
   function scalePreset() {
     const t = {
-      name: '音阶式异步（哆来咪：听到的音高 C4–C5）',
+      name: 'Scale-style async (do re mi: heard pitch C4–C5)',
       maxSpeed: 160,
       vBase: 38,
       vFull: 100,
@@ -321,14 +321,14 @@
         { to: 160, kind: 'wide3' },
       ],
     };
-    const carriers = scaleNotes('C4', 'major').map((n) => Math.round(noteFrequency(n) * 5) / 10); // 听到的音高 ÷ 2，取到 0.1 Hz
+    const carriers = scaleNotes('C4', 'major').map((n) => Math.round(noteFrequency(n) * 5) / 10); // heard pitch ÷ 2, rounded to 0.1 Hz
     return staircase(t, 0, 20, carriers);
   }
 
   function presets() {
     return {
       reference: {
-        name: '参考界面示例（异步 1050 Hz → 9 脉冲 → 宽 3 脉冲）',
+        name: 'Reference example (async 1050 Hz → 9 pulses → wide 3-pulse)',
         maxSpeed: 160,
         vBase: 38,
         vFull: 110,
@@ -338,8 +338,8 @@
           { to: 160, kind: 'wide3' },
         ],
       },
-      gto: fromModeMap(NS.Modes.PRESETS.gto, 'GTO 型（开关频率上限 420 Hz）'),
-      igbt: fromModeMap(NS.Modes.PRESETS.igbt, 'IGBT 型（开关频率上限 1.5 kHz）'),
+      gto: fromModeMap(NS.Modes.PRESETS.gto, 'GTO type (switching limit 420 Hz)'),
+      igbt: fromModeMap(NS.Modes.PRESETS.igbt, 'IGBT type (switching limit 1.5 kHz)'),
       scale: scalePreset(),
     };
   }

@@ -1,6 +1,6 @@
-// 电机工具包：共用部件（定子、绕组、外壳、轴、气隙磁场、转速模糊壳层）和“电机类型注册表”。
-// 新电机类型只需要实现转子：在 js/motors/ 里写一个文件，调用 MotorKit.register(...) 即可。
-// 坐标约定：电机轴沿 Z，从 +Z 端看，逆时针为正转方向。
+// Motor kit: shared parts (stator, windings, housing, shaft, air-gap field, speed-blur shell) and the "motor type registry".
+// A new motor type only has to implement the rotor: write one file in js/motors/ and call MotorKit.register(...).
+// Coordinate convention: the motor axis is Z; seen from the +Z end, counter-clockwise is the positive direction of rotation.
 (function (NS) {
   'use strict';
 
@@ -9,9 +9,9 @@
   const DEG = Math.PI / 180;
 
   const PALETTE = {
-    phase: [0xf2c230, 0x3dbb6a, 0xe5484d], // A 黄、B 绿、C 红（国标相序色）
-    north: 0xff8a3d, // 气隙磁通向外（转子 N 极一侧）
-    south: 0x3d8bff, // 气隙磁通向内
+    phase: [0xf2c230, 0x3dbb6a, 0xe5484d], // A yellow, B green, C red (phase colours)
+    north: 0xff8a3d, // air-gap flux pointing outwards (the rotor N-pole side)
+    south: 0x3d8bff, // air-gap flux pointing inwards
     steel: 0x9aa5b4,
     steelDark: 0x5d6877,
     housing: 0x7c93b0,
@@ -20,20 +20,20 @@
     marker: 0xfff2b0,
   };
 
-  // 所有电机共用的几何参数（长度单位任意，电机外径约为 2）
+  // Geometry shared by all motors (length unit is arbitrary; the motor outer diameter is about 2)
   const COMMON_DEFAULTS = {
-    length: 1.4, // 铁芯长度
-    outerRadius: 1.0, // 定子外半径
-    boreRadius: 0.62, // 定子内半径（膛径）
-    slotDepth: 0.24, // 槽深
-    airGap: 0.03, // 气隙（为了看得见，比真实比例夸大）
+    length: 1.4, // core length
+    outerRadius: 1.0, // stator outer radius
+    boreRadius: 0.62, // stator inner radius (bore)
+    slotDepth: 0.24, // slot depth
+    airGap: 0.03, // air gap (exaggerated compared with reality so it can be seen)
     shaftRadius: 0.17,
-    toothFraction: 0.52, // 齿占槽距的比例
+    toothFraction: 0.52, // fraction of the slot pitch taken by the tooth
   };
 
   const VIEW_DEFAULTS = {
     cutaway: true,
-    cutCenterDeg: 36, // 剖开的缺口中心方向（XY 平面内，从 +X 逆时针）
+    cutCenterDeg: 36, // direction of the centre of the cut-away notch (in the XY plane, counter-clockwise from +X)
     cutHalfWidthDeg: 52,
     shellOpacity: 0.3,
     showField: true,
@@ -41,7 +41,7 @@
     showRotorCurrent: true,
   };
 
-  // 三相绕组的相带：每对极 6 个相带，依次为 A+、C−、B+、A−、C+、B−（相序 A→B→C 逆时针旋转）
+  // Phase belts of the three-phase winding: 6 belts per pole pair, in order A+, C−, B+, A−, C+, B− (phase sequence A→B→C rotates counter-clockwise)
   const BELTS = [
     { ph: 0, s: 1 },
     { ph: 2, s: -1 },
@@ -71,35 +71,35 @@
     return Object.assign({ type }, registry[type].defaults);
   }
 
-  // ---- 参数检查 -----------------------------------------------------------------
+  // ---- Parameter checks -------------------------------------------------------------
   function need(cond, msg) {
     if (!cond) throw new Error(msg);
   }
   function num(s, key, lo, hi, label) {
     const v = s[key];
-    need(typeof v === 'number' && isFinite(v) && v >= lo && v <= hi, label + ' ' + key + ' 须是 ' + lo + ' 到 ' + hi + ' 之间的数');
+    need(typeof v === 'number' && isFinite(v) && v >= lo && v <= hi, label + ' ' + key + ' must be a number between ' + lo + ' and ' + hi);
   }
 
   function normalizeSpec(input) {
-    need(input && typeof input === 'object' && !Array.isArray(input), '电机定义必须是一个 JSON 对象');
+    need(input && typeof input === 'object' && !Array.isArray(input), 'The motor definition must be a JSON object');
     const def = registry[input.type];
-    need(def, '未知的电机类型 type：' + input.type + '，可选：' + Object.keys(registry).join('、'));
+    need(def, 'Unknown motor type: ' + input.type + '; available: ' + Object.keys(registry).join(', '));
     const s = Object.assign({}, COMMON_DEFAULTS, def.defaults, input);
     s.drivetrain = Object.assign({}, NS.Drive.DEFAULT_DRIVE, input.drivetrain || {});
-    need(Number.isInteger(s.poles) && s.poles >= 2 && s.poles <= 16 && s.poles % 2 === 0, '极数 poles 须是 2 到 16 的偶数');
+    need(Number.isInteger(s.poles) && s.poles >= 2 && s.poles <= 16 && s.poles % 2 === 0, 'poles must be an even number from 2 to 16');
     need(
       Number.isInteger(s.statorSlots) && s.statorSlots >= 3 * s.poles && s.statorSlots <= 96,
-      '定子槽数 statorSlots 须是整数，不少于 3×极数，不超过 96'
+      'statorSlots must be an integer, at least 3×poles and at most 96'
     );
-    num(s, 'length', 0.4, 3, '铁芯长度');
-    num(s, 'outerRadius', 0.5, 2, '定子外半径');
-    num(s, 'boreRadius', 0.2, 1.5, '膛径');
-    num(s, 'slotDepth', 0.05, 0.6, '槽深');
-    num(s, 'airGap', 0.005, 0.1, '气隙');
-    num(s, 'shaftRadius', 0.05, 0.6, '轴半径');
-    num(s, 'toothFraction', 0.3, 0.8, '齿比例');
-    need(s.boreRadius + s.slotDepth < s.outerRadius - 0.05, '槽底半径（boreRadius + slotDepth）必须比 outerRadius 至少小 0.05');
-    need(s.shaftRadius < s.boreRadius - s.airGap - 0.12, '轴半径 shaftRadius 太大，转子装不下');
+    num(s, 'length', 0.4, 3, 'Core length');
+    num(s, 'outerRadius', 0.5, 2, 'Stator outer radius');
+    num(s, 'boreRadius', 0.2, 1.5, 'Bore radius');
+    num(s, 'slotDepth', 0.05, 0.6, 'Slot depth');
+    num(s, 'airGap', 0.005, 0.1, 'Air gap');
+    num(s, 'shaftRadius', 0.05, 0.6, 'Shaft radius');
+    num(s, 'toothFraction', 0.3, 0.8, 'Tooth fraction');
+    need(s.boreRadius + s.slotDepth < s.outerRadius - 0.05, 'The slot-bottom radius (boreRadius + slotDepth) must be at least 0.05 below outerRadius');
+    need(s.shaftRadius < s.boreRadius - s.airGap - 0.12, 'shaftRadius is too large, the rotor will not fit');
     if (def.validate) def.validate(s, need, num);
     return s;
   }
@@ -117,14 +117,14 @@
       slotDepth: s.slotDepth,
     };
     g.delta = TAU / g.Z;
-    g.endZ = g.L / 2 + 0.42; // 端盖位置
+    g.endZ = g.L / 2 + 0.42; // end-cap position
     g.Rframe = g.Ro + 0.07;
     g.hubR = g.Rsh + 0.16;
-    g.rMid = g.Ri + s.slotDepth * 0.55; // 槽内导体的中心半径
+    g.rMid = g.Ri + s.slotDepth * 0.55; // centre radius of the conductors in the slots
     return g;
   }
 
-  // 剖切后保留的槽范围 [k0, k1)（边界落在齿中心，切口干净）
+  // Range of slots kept after cutting [k0, k1) (the boundaries fall on tooth centres, so the cut is clean)
   function keptRange(g, view) {
     const full = { full: true, k0: 0, k1: g.Z, a0: 0, a1: TAU };
     if (!view.cutaway) return full;
@@ -136,16 +136,16 @@
     return { full: false, k0, k1, a0: k0 * g.delta, a1: k1 * g.delta };
   }
 
-  // ---- 通用几何小工具 --------------------------------------------------------------
+  // ---- Small shared geometry helpers --------------------------------------------------
   const helpers = {
     stdMat(color, metalness, roughness, extra) {
       return new T.MeshStandardMaterial(Object.assign({ color, metalness, roughness }, extra || {}));
     },
-    // 沿 Z 轴的圆柱
+    // cylinder along the Z axis
     cyl(r, len, seg) {
       return new T.CylinderGeometry(r, r, len, seg || 64).rotateX(Math.PI / 2);
     },
-    // 圆环（或圆环扇形）沿 Z 轴拉伸，以原点为中心
+    // ring (or ring sector) extruded along the Z axis, centred on the origin
     ring(rOut, rIn, a0, a1, depth, curveSegments) {
       const shape = new T.Shape();
       if (a1 - a0 >= TAU - 1e-6) {
@@ -194,17 +194,17 @@
     });
   }
 
-  // ---- 定子铁芯（带槽） ---------------------------------------------------------------
+  // ---- Stator core (with slots) -------------------------------------------------------
   function statorGeometry(ctx) {
     const { spec, g, kept } = ctx;
-    const half = ((1 - spec.toothFraction) * g.delta) / 2; // 槽的半角宽
+    const half = ((1 - spec.toothFraction) * g.delta) / 2; // half angular width of a slot
     const P = (r, a) => new T.Vector2(r * Math.cos(a), r * Math.sin(a));
     const arc = (r, a0, a1, n, skipFirst) => {
       const out = [];
       for (let i = skipFirst ? 1 : 0; i <= n; i++) out.push(P(r, a0 + ((a1 - a0) * i) / n));
       return out;
     };
-    // 内轮廓：从齿中心出发，依次经过齿顶、槽壁、槽底、槽壁、齿顶……
+    // Inner contour: starting from a tooth centre, through tooth tip, slot wall, slot bottom, slot wall, tooth tip...
     const inner = [];
     for (let k = kept.k0; k < kept.k1; k++) {
       const c = (k + 0.5) * g.delta;
@@ -227,7 +227,7 @@
     return helpers.extrude(shape, g.L, 48);
   }
 
-  // ---- 三相绕组：槽内导体（实例化的方条）+ 端部连线 -------------------------------------
+  // ---- Three-phase windings: in-slot conductors (instanced bars) + end connections ----------------
   function buildWindings(ctx) {
     const { g, kept, view } = ctx;
     const group = new T.Group();
@@ -261,7 +261,7 @@
     rods.instanceColor.needsUpdate = true;
     group.add(rods);
 
-    // 端部连线：同一相相距一个极距的两个相带之间，前后端各一段弧
+    // End connections: between the two phase belts one pole pitch apart in the same phase, one arc at the front and one at the back
     const snap = (a) => (Math.round(a / g.delta - 0.5) + 0.5) * g.delta;
     const inKept = (a) => {
       if (kept.full) return true;
@@ -290,7 +290,7 @@
         const geo = new T.TubeGeometry(new T.CatmullRomCurve3(pts), 40, 0.03, 8, false);
         group.add(new T.Mesh(geo, tubeMats[BELTS[b % 6].ph]));
       });
-      const am = a1 + span / 2; // 标注挂在保留范围里最后一个线圈上，避开定子标注
+      const am = a1 + span / 2; // the label is attached to the last coil in the kept range, away from the stator label
       anchor = new T.Vector3(g.rMid * Math.cos(am), g.rMid * Math.sin(am), g.L / 2 + 0.07 + 0.3);
     }
 
@@ -303,7 +303,7 @@
         const cur = st.currents;
         for (let i = 0; i < slots.length; i++) {
           const s = slots[i];
-          const b = 0.5 + 0.5 * s.s * cur[s.ph]; // 电流方向 × 相带极性：亮 = 流出纸面，暗 = 流入纸面
+          const b = 0.5 + 0.5 * s.s * cur[s.ph]; // current direction × belt polarity: bright = out of the page, dark = into the page
           tmp.copy(base[s.ph]).multiplyScalar(0.16 + 0.84 * b);
           rods.setColorAt(i, tmp);
         }
@@ -315,7 +315,7 @@
     };
   }
 
-  // ---- 外壳、端盖、轴承座 ------------------------------------------------------------------
+  // ---- Housing, end caps, bearing hubs ------------------------------------------------------
   function buildHousing(ctx) {
     const { g, kept, view } = ctx;
     const group = new T.Group();
@@ -354,7 +354,7 @@
     };
   }
 
-  // ---- 转子侧的公共部分：轴与转向标记 -------------------------------------------------------
+  // ---- Common rotor-side parts: shaft and rotation marker -----------------------------------
   function buildShaft(ctx) {
     const { g } = ctx;
     const group = new T.Group();
@@ -368,7 +368,7 @@
     return group;
   }
 
-  // ---- 气隙磁场：沿圆周的 cos(p·(θ − φ)) 彩色光环，随旋转磁场转动 ------------------------------
+  // ---- Air-gap field: a colour ring cos(p·(θ − φ)) around the circumference, following the rotating field ----
   const FIELD_VERT = 'varying vec3 vPos;\nvoid main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
   const FIELD_FRAG = [
     'uniform float uP; uniform float uPhi; uniform float uAmp; uniform float uHalf;',
@@ -410,7 +410,7 @@
       mesh,
       anchor: new T.Vector3(rg * Math.cos(0.9), rg * Math.sin(0.9), half * 0.4),
       update(st) {
-        // power：逆变器输出的强度 0..1。惰行或逆变器关闭时，定子里没有电流，也就没有旋转磁场
+        // power: strength of the inverter output, 0..1. When coasting or with the inverter off there is no stator current, hence no rotating field
         const amp = st.power === undefined ? 1 : st.power;
         mesh.visible = view.showField && amp > 0.01;
         mat.uniforms.uP.value = st.polePairs;
@@ -420,7 +420,7 @@
     };
   }
 
-  // ---- 转速的“拖影”壳层：转得快时转子变模糊，拖影颜色随转速变化 ---------------------------------
+  // ---- Speed "blur" shell: the rotor blurs when it spins fast, and the blur colour follows the speed ----
   const BLUR_FRAG = [
     'uniform float uBlur; uniform float uPhase; uniform float uHalf; uniform vec3 uColor; varying vec3 vPos;',
     'void main(){',
@@ -466,13 +466,13 @@
     };
   }
 
-  // ---- 组装一台电机 ---------------------------------------------------------------------------
-  // 默认部件。电机类型可以在 register 时用 parts 覆盖其中任何一个，例如外转子、轴向磁通、
-  // 直线电机需要自己的定子；覆盖时可以调用 MotorKit.parts.xxx(ctx) 复用默认实现。
+  // ---- Assembling a motor -----------------------------------------------------------------------
+  // Default parts. A motor type can override any of them with parts at register time, e.g. outer-rotor, axial-flux
+  // and linear motors need their own stator; when overriding you can call MotorKit.parts.xxx(ctx) to reuse the default implementation.
   //   stator(ctx)   → THREE.Object3D
   //   windings(ctx) → { group, anchor, update(state) }
   //   housing(ctx)  → { group, setOpacity(o) }
-  //   shaft(ctx)    → THREE.Object3D（随转子一起转）
+  //   shaft(ctx)    → THREE.Object3D (turns together with the rotor)
   //   field(ctx)    → { mesh, anchor, update(state) }
   const DEFAULT_PARTS = {
     stator: (ctx) => new T.Mesh(statorGeometry(ctx), helpers.stdMat(PALETTE.steel, 0.55, 0.42)),
@@ -510,14 +510,14 @@
     const housing = parts.housing(ctx);
     root.add(housing.group);
 
-    // 标注：{ text, pos } 的位置都在电机局部坐标里
-    const a = kept.full ? 0.9 : kept.a0 + 0.04; // 贴着剖口的上沿，从默认视角看在电机上方
+    // Labels: { text, pos } with positions in the motor local coordinates
+    const a = kept.full ? 0.9 : kept.a0 + 0.04; // along the top edge of the cut, above the motor from the default view
     const labels = [
-      { text: '定子铁芯（带槽）', pos: new T.Vector3(((g.Rs + g.Ro) / 2) * Math.cos(a), ((g.Rs + g.Ro) / 2) * Math.sin(a), g.L * 0.3) },
-      { text: '气隙磁场（橙 / 蓝 = 磁通方向）', pos: field.anchor },
-      { text: '轴', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.55) },
+      { text: 'Stator core (slotted)', pos: new T.Vector3(((g.Rs + g.Ro) / 2) * Math.cos(a), ((g.Rs + g.Ro) / 2) * Math.sin(a), g.L * 0.3) },
+      { text: 'Air-gap field (orange / blue = flux direction)', pos: field.anchor },
+      { text: 'Shaft', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.55) },
     ];
-    if (winding.anchor) labels.splice(1, 0, { text: '三相绕组（槽内导体 + 端部）', pos: winding.anchor });
+    if (winding.anchor) labels.splice(1, 0, { text: 'Three-phase winding (slot conductors + end turns)', pos: winding.anchor });
     (rotorImpl.labels || []).forEach((l) => labels.push(l));
 
     const fadeMats = rotorImpl.fadeMats || [];
@@ -534,7 +534,7 @@
         field.update(st);
         blur.update(st);
         if (rotorImpl.update) rotorImpl.update(Object.assign({}, st, { showRotorCurrent: view.showRotorCurrent }));
-        const opacity = 1 - 0.75 * st.blur; // 拖影出现时淡化转子细节，避免高速下的“车轮倒转”假象
+        const opacity = 1 - 0.75 * st.blur; // when blur appears, fade the rotor details to avoid the "wagon-wheel" illusion at high speed
         const fading = st.blur > 0.01;
         fadeMats.forEach((m) => {
           if (m.transparent !== fading) {

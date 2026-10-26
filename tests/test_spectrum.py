@@ -9,14 +9,14 @@ CARRIER_PHASE = 1e-6
 
 
 def one_cycle(n, m, f1=50.0, samples_per_carrier=6000):
-    """时域采样把开关边沿量化到采样网格上，谱线误差与每个载波周期的采样点数成反比。"""
+    """Time-domain sampling quantizes the switching edges to the sample grid; the line error is inversely proportional to the samples per carrier period."""
     spc = n * samples_per_carrier
     w = simulate(make_point(f1, "sync", m=m, n=n), spc * f1, spc, carrier_phase=CARRIER_PHASE)
     return spc, w
 
 
 def strong_lines(m, n, f1, line_to_line, **kw):
-    """幅值高于 -40 dBc（相对基波）的解析谱线。"""
+    """Analytic lines above -40 dBc (relative to the fundamental)."""
     fund = (np.sqrt(3.0) if line_to_line else 1.0) * m
     lines = double_fourier_lines(m, n * f1, f1, line_to_line=line_to_line, **kw)
     return [line for line in lines if line[1] >= fund * 10 ** (-40 / 20)]
@@ -76,7 +76,7 @@ def test_line_selection_rules():
 
 def test_spectrogram_peak_level_and_frequency():
     fs, nperseg = 48000, 2048
-    f0 = 40 * fs / nperseg  # 正好落在 bin 中心
+    f0 = 40 * fs / nperseg  # exactly at a bin centre
     t = np.arange(fs) / fs
     x = 0.5 * np.sin(2 * np.pi * f0 * t)
     times, freqs, db = spectrogram_db(x, fs, nperseg=nperseg, hop=512, fmax=5000.0)

@@ -1,6 +1,6 @@
-// 声音：三相 SPWM → 电机电流纹波（代理量）→ 音频，是 vvvflab/synth.py 的 JavaScript 版。
-// 合成核心 createSynthCore 完全自成一体（不引用外面的变量，也不碰 DOM），
-// 所以同一份源码既能在 AudioWorklet 里实时运行，也能在 Node 里离线测试、和 Python 版对账。
+// Sound: three-phase SPWM → motor current ripple (proxy) → audio; the JavaScript version of vvvflab/synth.py.
+// The synthesis core createSynthCore is fully self-contained (it references no outside variables and does not touch the DOM),
+// so the same source can run in real time inside an AudioWorklet and also be tested offline in Node and cross-checked against the Python version.
 (function (NS) {
   'use strict';
 
@@ -8,7 +8,7 @@
     const TAU = Math.PI * 2;
     const SQ3 = 0.8660254037844386;
 
-    // 二阶滤波器系数（RBJ 公式），返回 [b0, b1, b2, a1, a2]（已除以 a0）
+    // Second-order filter coefficients (RBJ formulas), returns [b0, b1, b2, a1, a2] (already divided by a0)
     function lowpass(fc, q, fs) {
       const w = (TAU * fc) / fs;
       const cw = Math.cos(w);
@@ -46,14 +46,14 @@
       }
     }
 
-    // 三角载波：输入相位（圈），0 处为 0 并上升，值域 [-1, 1]
+    // Triangle carrier: input is the phase (in turns), 0 at 0 and rising, range [-1, 1]
     function tri(x) {
       x -= Math.floor(x);
       return x < 0.25 ? 4 * x : x < 0.75 ? 2 - 4 * x : 4 * x - 4;
     }
 
-    // 一个采样间隔内的脉冲平均值：dp、dc 是间隔起点和终点处“参考波 − 载波”的值（大于 0 时输出 +1），
-    // 间隔内发生翻转就按交叉点的位置折算面积。这样开关边沿的位置是精确的，不需要靠过采样来逼近。
+    // Mean of the pulse over one sample interval: dp and dc are the values of "reference − carrier" at the start and end of the interval (+1 is output when above 0);
+    // if it flips within the interval, the area is scaled by the position of the crossing. This makes the switching edges exact, with no oversampling needed to approximate them.
     function area(dp, dc) {
       const sp = dp > 0 ? 1 : -1;
       const sc = dc > 0 ? 1 : -1;
@@ -66,26 +66,26 @@
       constructor(fs, o) {
         o = o || {};
         this.fs = fs;
-        this.os = o.oversample || 1; // 默认不过采样；设成 4 可以和 Python 版（4 倍过采样 + FIR）逐点对照
+        this.os = o.oversample || 1; // no oversampling by default; set to 4 to compare point by point with the Python version (4x oversampling + FIR)
         const fsOs = fs * this.os;
         this.dt = 1 / fsOs;
-        this.alpha = Math.exp(-TAU * (o.leakHz || 20) * this.dt); // 带泄漏的积分器
+        this.alpha = Math.exp(-TAU * (o.leakHz || 20) * this.dt); // leaky integrator
         this.gdt = (o.rippleGain || 1200) * this.dt;
         const fcLp = 0.45 * fs;
-        this.lp1 = new Biquad(lowpass(fcLp, 0.5411961, fsOs)); // 4 阶巴特沃斯抗混叠，拆成两个二阶
+        this.lp1 = new Biquad(lowpass(fcLp, 0.5411961, fsOs)); // 4th-order Butterworth anti-aliasing, split into two second-order sections
         this.lp2 = new Biquad(lowpass(fcLp, 1.3065630, fsOs));
-        this.hp = new Biquad(highpass(o.hpfHz || 100, Math.SQRT1_2, fs)); // 滤掉 100 Hz 以下
-        this.kp = 1 - Math.exp(-1 / (0.012 * fs)); // 参数平滑：12 ms
-        this.kg = 1 - Math.exp(-1 / (0.02 * fs)); // 增益平滑：20 ms
-        this.kphi = 1 - Math.exp(-1 / (0.04 * fs)); // 同步载波相位归零的速度：40 ms
-        this.t1 = 0; // 基波相位 [圈]
-        this.tc = 0; // 异步载波相位 [圈]
-        this.phi = 0; // 同步载波相对基波的相位偏移 [圈]
-        this.y = 0; // 积分器状态
-        this.g = 0; // 当前增益
+        this.hp = new Biquad(highpass(o.hpfHz || 100, Math.SQRT1_2, fs)); // filters out everything below 100 Hz
+        this.kp = 1 - Math.exp(-1 / (0.012 * fs)); // parameter smoothing: 12 ms
+        this.kg = 1 - Math.exp(-1 / (0.02 * fs)); // gain smoothing: 20 ms
+        this.kphi = 1 - Math.exp(-1 / (0.04 * fs)); // speed at which the synchronous carrier phase returns to zero: 40 ms
+        this.t1 = 0; // fundamental phase [turns]
+        this.tc = 0; // asynchronous carrier phase [turns]
+        this.phi = 0; // phase offset of the synchronous carrier relative to the fundamental [turns]
+        this.y = 0; // integrator state
+        this.g = 0; // current gain
         this.kind = 'async';
         this.n = 0;
-        this.valid = false; // 上一步终点处的“参考波 − 载波”是否有效；换挡或静音后要重新取
+        this.valid = false; // whether "reference − carrier" at the end of the previous step is valid; must be re-taken after a shift or after muting
         this.da = 0;
         this.db = 0;
         this.dc = 0;
@@ -95,22 +95,22 @@
         this.started = false;
       }
 
-      // 换挡或异步转同步时保持 a 相载波相位连续，避免咔嗒声。
-      // 同步调制的载波应该对准参考波的过零点（φ = 0）：那样正弦与三角波的交点是对称的，输出基波的相位
-      // 才和参考波一致，低脉冲数时尤其明显。所以切换时先接续，之后让 φ 在几十毫秒里滑到 0。
+      // When shifting or going from asynchronous to synchronous, keep the phase-a carrier phase continuous to avoid clicks.
+      // The carrier of synchronous modulation should be aligned with the zero crossing of the reference (φ = 0): then the crossings of the sine and the triangle are symmetric and the phase of the output fundamental
+      // matches the reference, which matters most with few pulses. So on a switch we first continue the phase, then let φ glide to 0 over a few tens of milliseconds.
       switchMode(kind, n) {
         let carrier = this.kind === 'sync' ? this.n * this.t1 + this.phi : this.tc;
         carrier -= Math.floor(carrier);
         if (kind === 'sync') {
           this.phi = carrier - n * this.t1;
-          this.phi -= Math.round(this.phi); // 三角波周期是 1，φ 取 (−0.5, 0.5] 里最近的那个
+          this.phi -= Math.round(this.phi); // the triangle period is 1; take the φ nearest to 0 in (−0.5, 0.5]
         } else if (kind === 'async') this.tc = carrier;
         this.kind = kind;
         this.n = n;
         this.valid = false;
       }
 
-      // p 可以只含要改的字段：f1 m v1 fc kind n gate volume
+      // p may contain only the fields to change: f1 m v1 fc kind n gate volume
       setTarget(p) {
         const t = this.tgt;
         for (const k of ['f1', 'm', 'v1', 'fc', 'gate', 'volume']) if (p[k] !== undefined) t[k] = p[k];
@@ -123,14 +123,14 @@
         }
       }
 
-      // 往 out 里写 out.length 个单声道样本
+      // Write out.length mono samples into out
       render(out) {
         const N = out.length;
         const t = this.tgt;
         const c = this.cur;
         const gt = t.gate ? t.volume : 0;
         if (gt === 0 && this.g < 1e-5) {
-          // 静音：不做运算，并清空状态，重新打开时不会有瞬态
+          // Muted: do no work and clear the state, so there is no transient when it is turned back on
           out.fill(0);
           this.g = 0;
           this.y = 0;
@@ -141,7 +141,7 @@
           return;
         }
         const os = this.os;
-        const filt = os > 1; // 只有过采样时才需要抽取前的低通
+        const filt = os > 1; // the low-pass before decimation is only needed with oversampling
         const dt = this.dt;
         const kind = this.kind;
         const n = this.n;
@@ -166,7 +166,7 @@
             const cs = Math.cos(ang);
             const sb = -0.5 * sn - SQ3 * cs; // sin(θ − 120°)
             const sc = -0.5 * sn + SQ3 * cs; // sin(θ + 120°)
-            // 这一步终点处，三相“参考波 − 载波”的值；大于 0 时桥臂输出 +1
+            // "reference − carrier" of the three phases at the end of this step; the leg outputs +1 when above 0
             let na;
             let nb;
             let nc;
@@ -179,7 +179,7 @@
               let tb;
               let tcr;
               if (kind === 'sync') {
-                // 每一相的载波都锁在自己的参考波上：N 不是 3 的倍数时三相也严格互差 120°
+                // each phase carrier is locked to its own reference: the three phases are exactly 120° apart even when N is not a multiple of 3
                 const base = n * this.t1 + this.phi;
                 ta = tri(base);
                 tb = tri(base - n / 3);
@@ -206,10 +206,10 @@
             da = na;
             db = nb;
             dc = nc;
-            const va = pa - (pa + pb + pc) / 3; // a 相电机相电压（中性点悬空）
-            const u = va - c.v1 * 0.5 * (snp + sn); // 减去基波（等价于反电势），剩下开关谐波
+            const va = pa - (pa + pb + pc) / 3; // phase-a motor phase voltage (floating neutral)
+            const u = va - c.v1 * 0.5 * (snp + sn); // subtract the fundamental (equivalent to the back-EMF), leaving the switching harmonics
             snp = sn;
-            this.y = this.alpha * this.y + this.gdt * u; // 积分 → 电流纹波
+            this.y = this.alpha * this.y + this.gdt * u; // integrate → current ripple
             z = filt ? this.lp2.step(this.lp1.step(this.y)) : this.y;
           }
           this.g += (gt - this.g) * this.kg;
@@ -225,7 +225,7 @@
     return SynthCore;
   }
 
-  // ---- 音频引擎：AudioWorklet（首选）或 ScriptProcessor（备用）+ 声谱图用的分析器 ------------------
+  // ---- Audio engine: AudioWorklet (preferred) or ScriptProcessor (fallback) + an analyser for the spectrogram ------------------
   function workletSource() {
     return [
       'const createSynthCore = ' + createSynthCore.toString() + ';',
@@ -243,8 +243,8 @@
     ].join('\n');
   }
 
-  // 把合成核心作为模块交给音频线程。直接双击打开 index.html（file://）时，Chromium 不允许用 Blob 地址
-  // 加载 worklet（页面来源是 null），但 data: 地址可以；有服务器时两种都行，先试 Blob。
+  // Hand the synthesis core to the audio thread as a module. When index.html is opened by double-click (file://), Chromium does not allow loading a worklet from a Blob URL
+  // (the page origin is null), but a data: URL works; with a server both work, so try Blob first.
   async function loadWorklet(ctx) {
     const src = workletSource();
     const makers = [() => 'data:text/javascript;charset=utf-8,' + encodeURIComponent(src)];
@@ -278,7 +278,7 @@
     get running() {
       return !!this.ctx && this.ctx.state === 'running';
     }
-    // 必须在用户操作（点击、按键）里调用，浏览器才允许发声
+    // Must be called from a user action (click, key press), otherwise the browser will not allow sound
     start(forceFallback) {
       if (!this._starting) this._starting = this._start(forceFallback).catch((e) => {
         this.error = String(e && e.message ? e.message : e);
@@ -288,8 +288,8 @@
     }
     async _start(forceFallback) {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) throw new Error('这个浏览器不支持 Web Audio');
-      if (this.ctx) this.ctx.close().catch(() => {}); // 上一次启动失败留下的，别再积累
+      if (!AC) throw new Error('This browser does not support Web Audio');
+      if (this.ctx) this.ctx.close().catch(() => {}); // left over from a failed earlier start, do not let them pile up
       this.ctx = new AC({ latencyHint: 'interactive' });
       this.master = this.ctx.createGain();
       this.analyser = this.ctx.createAnalyser();
@@ -304,12 +304,12 @@
           node = new AudioWorkletNode(this.ctx, 'vvvf-synth', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
           this.mode = 'worklet';
         } catch (e) {
-          console.warn('AudioWorklet 加载失败，改用备用方式：', e);
-          this.error = 'AudioWorklet 不可用，延迟会稍大一些。';
+          console.warn('AudioWorklet failed to load, falling back:', e);
+          this.error = 'AudioWorklet is unavailable; latency will be slightly higher.';
           node = null;
         }
       } else if (!forceFallback) {
-        this.error = '这个浏览器没有 AudioWorklet，延迟会稍大一些。';
+        this.error = 'This browser has no AudioWorklet; latency will be slightly higher.';
       }
       if (!node) {
         const SynthCore = createSynthCore();

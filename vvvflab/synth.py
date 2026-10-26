@@ -1,8 +1,8 @@
-"""实时声音合成：开关波形 → 电流纹波（代理量）→ 音频。
+"""Real-time sound synthesis: switching waveform → current ripple (proxy) → audio.
 
-声音模型（P1 的假设 A）：磁励力正比于电流谐波，可听频率等于谐波频率。
-电机漏感把开关电压变成电流纹波：i_rip ∝ ∫(v - v1) dt，其中 v1 是基波（等价于反电势）。
-为了让载波边沿落在音频采样点之间，先在 oversample 倍的采样率上逐点生成开关波形，再抽取。
+Sound model (assumption A of P1): the magnetic exciting force is proportional to the current harmonics, and the audible frequency equals the harmonic frequency.
+The motor leakage inductance turns the switching voltage into current ripple: i_rip ∝ ∫(v - v1) dt, where v1 is the fundamental (equivalent to the back-EMF).
+So that the carrier edges can fall between audio samples, the switching waveform is generated point by point at oversample times the sample rate and then decimated.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .pwm import TWO_PI, OperatingPoint, pole_states, square_states
 
 
 class DriveSynth:
-    """把工作点变成音频块。set_target 可在任意线程调用，render 在音频回调里调用。"""
+    """Turns an operating point into audio blocks. set_target may be called from any thread; render is called from the audio callback."""
 
     def __init__(
         self, fs=48000, oversample=4, hpf_hz=100.0, leak_hz=20.0, ripple_gain=1200.0, ring_seconds=8.0, soft_start=True
@@ -23,11 +23,11 @@ class DriveSynth:
         fs_os = self.fs * self.os
         dt = 1.0 / fs_os
         self._dt = dt
-        alpha = np.exp(-TWO_PI * leak_hz * dt)  # 带泄漏的积分器，避免直流漂移
+        alpha = np.exp(-TWO_PI * leak_hz * dt)  # leaky integrator, avoids DC drift
         self._int_b = np.array([ripple_gain * dt])
         self._int_a = np.array([1.0, -alpha])
         self._zi_int = np.zeros(1)
-        self._fir = signal.firwin(127, 0.45 * self.fs, fs=fs_os)  # 抽取前的抗混叠
+        self._fir = signal.firwin(127, 0.45 * self.fs, fs=fs_os)  # anti-aliasing before decimation
         self._zi_fir = np.zeros(len(self._fir) - 1)
         self._sos = signal.butter(2, hpf_hz, "highpass", fs=self.fs, output="sos")
         self._zi_sos = np.zeros((self._sos.shape[0], 2))
@@ -36,7 +36,7 @@ class DriveSynth:
         self._target: OperatingPoint | None = None
         self._cur: OperatingPoint | None = None
         self._volume = 0.5
-        self._gain = 0.0 if soft_start else self._volume  # soft_start=False 时跳过起始的音量渐入（测试用）
+        self._gain = 0.0 if soft_start else self._volume  # soft_start=False skips the initial volume fade-in (for tests)
         self.ring = np.zeros(int(ring_seconds * self.fs), dtype=np.float32)
         self._wpos = 0
 
@@ -49,7 +49,7 @@ class DriveSynth:
         self._volume = float(np.clip(volume, 0.0, 1.0))
 
     def recent(self, seconds):
-        """最近 seconds 秒的输出（按时间顺序，副本），用于画声谱图。"""
+        """The most recent `seconds` of output (in time order, a copy), used to draw the spectrogram."""
         w, size = self._wpos, len(self.ring)
         n = min(int(seconds * self.fs), size, w)
         return self.ring[np.arange(w - n, w) % size].copy()
@@ -66,14 +66,14 @@ class DriveSynth:
         self._wpos += n
 
     def render(self, frames):
-        """生成 frames 个单声道样本（float32，幅度不超过 1）。"""
+        """Generate `frames` mono samples (float32, amplitude at most 1)."""
         op, cur = self._target, self._cur
         if op is None:
             out = np.zeros(frames, dtype=np.float32)
             self._push(out)
             return out
         n = frames * self.os
-        ramp = np.arange(1, n + 1) / n  # 块内线性过渡，避免参数跳变产生的咔嗒声
+        ramp = np.arange(1, n + 1) / n  # linear transition within the block, avoids clicks from parameter jumps
 
         def lerp(a, b):
             return a + (b - a) * ramp
@@ -85,7 +85,7 @@ class DriveSynth:
             s = square_states(th1)
         else:
             if op.kind == "sync":
-                # 保持载波相位连续：换挡时只改变 N，不让载波相位跳变
+                # keep the carrier phase continuous: when shifting, only N changes and the carrier phase must not jump
                 thc = op.n * th1 + (self._theta_c - op.n * self._theta1)
             else:
                 thc = self._theta_c + TWO_PI * np.cumsum(lerp(cur.fc, op.fc)) * self._dt
@@ -94,14 +94,14 @@ class DriveSynth:
         self._theta1 = float(th1[-1] % TWO_PI)
         self._cur = op
 
-        va = s[0] - s.mean(axis=0)  # a 相电机相电压
-        u = va - v1 * np.sin(th1)  # 减去基波，剩下开关谐波
+        va = s[0] - s.mean(axis=0)  # phase-a motor phase voltage
+        u = va - v1 * np.sin(th1)  # subtract the fundamental, leaving the switching harmonics
         y, self._zi_int = signal.lfilter(self._int_b, self._int_a, u, zi=self._zi_int)
         y, self._zi_fir = signal.lfilter(self._fir, [1.0], y, zi=self._zi_fir)
         y = y[self.os - 1 :: self.os]
         y, self._zi_sos = signal.sosfilt(self._sos, y, zi=self._zi_sos)
 
-        gain_target = 0.0 if op.f1 < 0.5 else self._volume  # 停车时逆变器不开关，无声
+        gain_target = 0.0 if op.f1 < 0.5 else self._volume  # the inverter does not switch when the train is stopped, so no sound
         g = self._gain + (gain_target - self._gain) * (np.arange(1, frames + 1) / frames)
         self._gain = gain_target
         out = (g * np.tanh(y)).astype(np.float32)

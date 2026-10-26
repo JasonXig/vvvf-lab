@@ -1,5 +1,5 @@
-// 三相异步电机（笼型）：转子是铁芯 + 铜导条 + 两个端环。
-// 导条上的颜色表示感应电流：转差越大、导条正好处在磁场变化最快的位置，电流越大。
+// Three-phase induction motor (squirrel cage): the rotor is an iron core + copper bars + two end rings.
+// The bar colour shows the induced current: the larger the slip and the closer a bar is to where the field changes fastest, the larger the current.
 (function (NS) {
   'use strict';
 
@@ -10,15 +10,15 @@
   const TAU = K.TAU;
 
   K.register('induction', {
-    label: '三相异步电机（笼型）',
-    synchronous: false, // 转子转速低于同步转速，存在转差
+    label: 'Three-phase induction motor (squirrel cage)',
+    synchronous: false, // the rotor speed is below the synchronous speed, so there is slip
     defaults: { poles: 4, statorSlots: 36, rotorBars: 28 },
     presets: {
-      '异步 · 4 极 · 36 槽 · 28 导条': { poles: 4, statorSlots: 36, rotorBars: 28 },
-      '异步 · 6 极 · 54 槽 · 44 导条': { poles: 6, statorSlots: 54, rotorBars: 44 },
+      'Induction · 4 poles · 36 slots · 28 bars': { poles: 4, statorSlots: 36, rotorBars: 28 },
+      'Induction · 6 poles · 54 slots · 44 bars': { poles: 6, statorSlots: 54, rotorBars: 44 },
     },
     validate(s, need) {
-      need(Number.isInteger(s.rotorBars) && s.rotorBars >= 8 && s.rotorBars <= 80, '转子导条数 rotorBars 须是 8 到 80 的整数');
+      need(Number.isInteger(s.rotorBars) && s.rotorBars >= 8 && s.rotorBars <= 80, 'Rotor bar count rotorBars must be an integer from 8 to 80');
     },
 
     buildRotor(ctx) {
@@ -65,9 +65,9 @@
       return {
         group,
         fadeMats: [coreMat, barMat, ringMat],
-        labels: [{ text: '笼型转子（导条 + 端环）', pos: new T.Vector3(g.Rr * 0.55, g.Rr * 0.4, Lr / 2 + 0.12) }],
+        labels: [{ text: 'Squirrel-cage rotor (bars + end rings)', pos: new T.Vector3(g.Rr * 0.55, g.Rr * 0.4, Lr / 2 + 0.12) }],
         update(st) {
-          // 导条电流 ∝ 转差 × |sin(p·(导条位置 − 磁场位置))|：磁场扫过导条越快，电流越大
+          // bar current ∝ slip × |sin(p·(bar position − field position))|: the faster the field sweeps past a bar, the larger the current
           for (let j = 0; j < n; j++) {
             const a = st.rotorAngle + (j * TAU) / n;
             const k = st.showRotorCurrent ? st.slipAmp * Math.abs(Math.sin(st.polePairs * (a - st.fieldAngle))) : 0;

@@ -74,14 +74,14 @@ def test_check_reports_bad_tables():
     assert any("N = 10" in p for p in ModeMap((Segment(0.0, 20.0, "sync", n=10), tail), 16.0).check())
     assert any("N = 12" in p for p in ModeMap((Segment(0.0, 20.0, "sync", n=12), tail), 16.0).check())
     gap = ModeMap((good, Segment(25.0, math.inf, "square")), f_base=16.0)
-    assert any("不连续" in p for p in gap.check())
-    assert any("超过器件上限" in p for p in ModeMap((good, tail), 16.0).check(f_max=100.0))
-    assert any("方波" in p for p in ModeMap((good,), 16.0).check())
+    assert any("not contiguous" in p for p in gap.check())
+    assert any("exceeds the device limit" in p for p in ModeMap((good, tail), 16.0).check(f_max=100.0))
+    assert any("square-wave" in p for p in ModeMap((good,), 16.0).check())
 
 
 def test_synthesize_handles_a_very_low_limit_without_gaps():
     mm = synthesize(100.0)
-    assert [p for p in mm.check() if "不连续" in p] == []
+    assert [p for p in mm.check() if "not contiguous" in p] == []
     assert mm.segments[-1].kind == "square"
 
 

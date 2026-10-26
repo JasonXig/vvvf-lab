@@ -10,7 +10,7 @@ MAX_SPEED = 130.0
 
 
 def predicted_lines(op):
-    """工作点 op 应该出现的谱线频率：载波组 k·fc + n·f1（线性区），以及过调制和方波带来的低次谐波 6j±1。"""
+    """Line frequencies that should appear for operating point op: carrier groups k·fc + n·f1 (linear region), plus the low-order harmonics 6j±1 from overmodulation and square waves."""
     lines = {k * op.f1 for k in range(1, 40) if k % 6 in (1, 5)}
     if op.kind != "square":
         for k in (1, 2, 3):

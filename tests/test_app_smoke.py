@@ -1,4 +1,4 @@
-"""界面冒烟测试：用无界面平台把窗口跑起来。没装 PySide6 / pyqtgraph 时整个文件跳过。"""
+"""GUI smoke test: run the window on a headless platform. The whole file is skipped if PySide6 / pyqtgraph is not installed."""
 import os
 import time
 
@@ -49,13 +49,13 @@ def test_every_mode_source_runs_at_every_speed(window):
 
 
 def test_spectrum_shows_stems_and_theory_markers_in_the_linear_region(window):
-    window.preset.setCurrentIndex(0)  # GTO 型
-    tick_at(window, 20.0)  # f1 = 24 Hz，同步 15 脉冲，m < 1
+    window.preset.setCurrentIndex(0)  # GTO type
+    tick_at(window, 20.0)  # f1 = 24 Hz, synchronous 15 pulses, m < 1
     xs, ys = window.c_stems.getData()
     assert len(xs) > 10 and len(xs) == len(ys)
     tx, ty = window.s_theory.getData()
     assert len(tx) >= 6
-    tick_at(window, 130.0)  # 方波：不画解析谱线
+    tick_at(window, 130.0)  # square wave: no analytic lines drawn
     assert len(window.s_theory.getData()[0]) == 0
 
 
@@ -84,5 +84,5 @@ def test_a_tick_is_cheap_enough_for_30_fps(window):
     window.tick()
     start = time.perf_counter()
     for i in range(30):
-        tick_at(window, 5.0 + i * 3.0)  # 每次换挡点不同，强制重算波形与频谱
+        tick_at(window, 5.0 + i * 3.0)  # a different shift point each time, forcing the waveform and spectrum to be recomputed
     assert (time.perf_counter() - start) / 30 < 0.030

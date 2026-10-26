@@ -1,6 +1,6 @@
-"""离线渲染：把模式表的一次加速扫频渲染成音频，不需要声卡和界面。
+"""Offline rendering: render one acceleration sweep of a mode map to audio, no sound card or GUI needed.
 
-用法：python -m vvvflab.render gto gto.wav [--seconds 18]
+Usage: python -m vvvflab.render gto gto.wav [--seconds 18]
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .synth import DriveSynth
 
 
 def render_sweep(mode_map, seconds=18.0, max_speed=130.0, fs=48000, block=480, volume=0.5):
-    """速度从 0 匀速加到 max_speed（km/h），每 block 个样本更新一次工作点；返回 (音频, 采样率)。"""
+    """Accelerate uniformly from 0 to max_speed (km/h), updating the operating point every `block` samples; returns (audio, sample rate)."""
     synth = DriveSynth(fs)
     synth.set_volume(volume)
     n_blocks = int(seconds * fs / block)
@@ -27,14 +27,14 @@ def render_sweep(mode_map, seconds=18.0, max_speed=130.0, fs=48000, block=480, v
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="把一次加速扫频渲染成 WAV")
+    parser = argparse.ArgumentParser(description="Render an acceleration sweep to a WAV file")
     parser.add_argument("preset", choices=sorted(PRESETS))
     parser.add_argument("output")
     parser.add_argument("--seconds", type=float, default=18.0)
     args = parser.parse_args(argv)
     audio, fs = render_sweep(PRESETS[args.preset], seconds=args.seconds)
     wavfile.write(args.output, fs, np.round(audio * 32767).astype(np.int16))
-    print(f"已写入 {args.output}：{len(audio) / fs:.1f} 秒，{fs} Hz")
+    print(f"Wrote {args.output}: {len(audio) / fs:.1f} s, {fs} Hz")
 
 
 if __name__ == "__main__":

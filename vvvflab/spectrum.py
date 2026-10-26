@@ -1,4 +1,4 @@
-"""频谱工具：FFT 幅值谱、双重傅里叶（贝塞尔）解析谱线、短时傅里叶声谱图。"""
+"""Spectrum tools: FFT amplitude spectrum, double-Fourier (Bessel) analytic lines, short-time Fourier spectrogram."""
 from __future__ import annotations
 
 import numpy as np
@@ -8,7 +8,7 @@ from .pwm import SQRT3
 
 
 def amplitude_spectrum(x, fs, window="rect"):
-    """单边幅值谱，返回 (频率, 幅值)；幅值按窗的相干增益校正，单位与 x 相同。"""
+    """One-sided amplitude spectrum, returns (frequency, amplitude); the amplitude is corrected for the window's coherent gain and has the same unit as x."""
     n = len(x)
     w = np.hanning(n) if window == "hann" else np.ones(n)
     amps = np.abs(np.fft.rfft(x * w)) * 2.0 / w.sum()
@@ -19,10 +19,10 @@ def amplitude_spectrum(x, fs, window="rect"):
 
 
 def double_fourier_lines(m, fc, f1, line_to_line=True, m_max=3, n_max=30):
-    """自然采样三相 SPWM 的谱线，返回 [(频率 Hz, 幅值 Vdc/2, 载波阶 k, 边带阶 n), ...]。
+    """Spectral lines of a naturally sampled three-phase SPWM, returns [(frequency Hz, amplitude Vdc/2, carrier order k, sideband order n), ...].
 
-    只在线性区（m ≤ 1）成立。幅值公式：A = (4/(πk))·|J_n(kπm/2)|，线电压再乘 √3；
-    要求 k+n 为奇数，线电压中 n 为 3 的倍数的谱线（含载波本身，n=0）相互抵消。
+    Valid only in the linear region (m ≤ 1). Amplitude formula: A = (4/(πk))·|J_n(kπm/2)|, multiplied by √3 for the line voltage;
+    k+n must be odd, and in the line voltage the lines whose n is a multiple of 3 (including the carrier itself, n=0) cancel.
     """
     scale = SQRT3 if line_to_line else 1.0
     lines = []
@@ -38,9 +38,9 @@ def double_fourier_lines(m, fc, f1, line_to_line=True, m_max=3, n_max=30):
 
 
 def spectrogram_db(x, fs, nperseg=2048, hop=512, fmax=5000.0, floor_db=-90.0):
-    """短时傅里叶幅值谱（dB，0 dB = 满幅 1.0）。
+    """Short-time Fourier amplitude spectrum (dB, 0 dB = full scale 1.0).
 
-    返回 (times, freqs, db)，db 形状为 (n_freq, n_time)；样本不足一帧时返回空数组。
+    Returns (times, freqs, db), db has shape (n_freq, n_time); returns empty arrays if there are fewer samples than one frame.
     """
     freqs = np.fft.rfftfreq(nperseg, 1.0 / fs)
     keep = freqs <= fmax

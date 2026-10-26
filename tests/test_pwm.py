@@ -13,11 +13,11 @@ from vvvflab.pwm import (
     triangle,
 )
 
-CARRIER_PHASE = 1e-6  # 避开参考波与载波恰好相等的并列点
+CARRIER_PHASE = 1e-6  # avoid the tie where the reference exactly equals the carrier
 
 
 def one_cycle(n, m, f1=50.0, samples_per_carrier=300):
-    """同步调制 N 的一个完整基波周期；每周期样本数是 3 的倍数，三相时移才落在整数样本上。"""
+    """One full fundamental period of synchronous modulation N; the sample count per period is a multiple of 3 so the phase shifts fall on whole samples."""
     spc = n * samples_per_carrier
     w = simulate(make_point(f1, "sync", m=m, n=n), spc * f1, spc, carrier_phase=CARRIER_PHASE)
     return spc, w
@@ -36,7 +36,7 @@ def test_triangle_shape():
 def test_sync_pulse_count_per_cycle(n):
     _, w = one_cycle(n, 0.8)
     s = w.s[0]
-    assert np.sum(np.roll(s, -1) > s) == n  # 每个载波周期一个脉冲
+    assert np.sum(np.roll(s, -1) > s) == n  # one pulse per carrier period
 
 
 @pytest.mark.parametrize("n", [9, 15, 27])

@@ -1,7 +1,7 @@
-// 右上角的两块示波器和一条电平表：
-//   声谱图    读音频分析器，每 33 ms 画一列
-//   开关波形  把当前工作点的 A 相桥臂输出画出来（参考波、三角载波、±1 的脉冲），一眼看出“几个脉冲”
-//   电平条    声音的响度，没有声音时一动不动，用来确认声音真的在出
+// Two scopes in the top-right corner and a level meter:
+//   spectrogram        reads the audio analyser, one column every 33 ms
+//   switching waveform  draws the phase-A leg output of the current operating point (reference, triangle carrier, ±1 pulses), so you can see "how many pulses" at a glance
+//   level bar          loudness of the sound; it does not move when there is no sound, so you can confirm the sound is really coming out
 (function (NS) {
   'use strict';
 
@@ -10,13 +10,13 @@
   const TAU = Math.PI * 2;
   const HUE = { async: '#2dd4bf', sync: '#818cf8', wide3: '#e879f9', square: '#fbbf24' };
 
-  // 三角载波：输入相位（圈），0 处为 0 并上升，值域 [-1, 1]（和 synth.js 一致）
+  // Triangle carrier: input is the phase (in turns), 0 at 0 and rising, range [-1, 1] (same as synth.js)
   function tri(x) {
     x -= Math.floor(x);
     return x < 0.25 ? 4 * x : x < 0.75 ? 2 - 4 * x : 4 * x - 4;
   }
 
-  // ================================================================ 声谱图
+  // ================================================================ Spectrogram
   const spec = { g: null, w: 0, h: 0, lut: null, bins: null, last: 0 };
   function initSpectro() {
     const cv = $('spec');
@@ -28,7 +28,7 @@
     spec.g = cv.getContext('2d');
     spec.g.fillStyle = '#03060c';
     spec.g.fillRect(0, 0, spec.w, spec.h);
-    // 颜色表：黑 → 深蓝 → 青 → 浅青白（和界面主色一致）
+    // Colour map: black → deep blue → cyan → pale cyan-white (matches the main colour of the UI)
     const stops = [
       [0, 3, 6, 12],
       [0.28, 10, 40, 96],
@@ -57,7 +57,7 @@
     analyser.getByteFrequencyData(spec.bins);
     const binHz = analyser.context.sampleRate / analyser.fftSize;
     const maxBin = Math.max(1, Math.floor(4000 / binHz));
-    g.drawImage(g.canvas, 1, 0, w - 1, h, 0, 0, w - 1, h); // 整体左移一列（自己画到自己，不读回像素）
+    g.drawImage(g.canvas, 1, 0, w - 1, h, 0, 0, w - 1, h); // shift everything left by one column (draw the canvas onto itself, no pixel read-back)
     const col = g.createImageData(1, h);
     for (let y = 0; y < h; y++) {
       const v = spec.bins[Math.min(maxBin, Math.round((1 - y / (h - 1)) * maxBin))];
@@ -69,7 +69,7 @@
     g.putImageData(col, w - 1, 0);
   }
 
-  // ================================================================ 电平条
+  // ================================================================ Level bar
   const vu = { buf: null, level: 0, last: 0 };
   function drawLevel(analyser, nowMs) {
     const fill = $('vuFill');
@@ -88,7 +88,7 @@
     fill.style.transform = 'scaleX(' + vu.level.toFixed(3) + ')';
   }
 
-  // ================================================================ 开关波形
+  // ================================================================ Switching waveform
   const wave = { last: 0, cap: '', key: '' };
   function fit(cv) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -106,7 +106,7 @@
     return { g, w, h };
   }
 
-  // f = { run, kind, segKind, n, fc, f1, m }；kind 是 async | sync | square（同步里的“宽 3 脉冲”是 sync、n = 3）
+  // f = { run, kind, segKind, n, fc, f1, m }; kind is async | sync | square ("wide 3-pulse" is sync with n = 3)
   function drawWave(f, nowMs) {
     const cv = $('wave');
     if (!cv || nowMs - wave.last < 40) return;
@@ -117,7 +117,7 @@
     g.clearRect(0, 0, w, h);
     const yc = h / 2;
     const amp = h / 2 - 8;
-    // 水平参考线：0、±1
+    // horizontal reference lines: 0, ±1
     g.lineWidth = 1;
     g.strokeStyle = 'rgba(255,255,255,.06)';
     g.beginPath();
@@ -127,13 +127,13 @@
     }
     g.stroke();
 
-    let cap = '逆变器停止';
+    let cap = 'Inverter stopped';
     if (f.run) {
       const f1 = Math.max(f.f1, 0.01);
       const sync = f.kind === 'sync';
       const square = f.kind === 'square';
-      const ratio = square ? 1 : sync ? f.n : f.fc / f1; // 每个基波周期里的载波个数
-      // 异步时载波比可能有几百，一个基波周期画不下：只截取 30 个载波周期
+      const ratio = square ? 1 : sync ? f.n : f.fc / f1; // carriers per fundamental period
+      // With asynchronous modulation the carrier ratio can be in the hundreds and will not fit in one fundamental period: show only 30 carrier periods
       const win = !sync && !square && ratio > 30 ? 30 / ratio : 1;
       const th0 = -Math.PI * win;
       const span = TAU * win;
@@ -147,7 +147,7 @@
         else p = f.m * Math.sin(th) > tri((ratio * th) / TAU) ? 1 : -1;
         ys.push(p);
       }
-      // 参考波和载波（淡）
+      // reference and carrier (faint)
       if (!square) {
         g.lineWidth = 1;
         g.strokeStyle = 'rgba(255,255,255,.16)';
@@ -173,7 +173,7 @@
       }
       g.stroke();
       g.setLineDash([]);
-      // 开关波形：带淡淡的填充
+      // switching waveform: with a faint fill
       g.beginPath();
       g.moveTo(0, yc);
       for (let i = 0; i <= N; i++) {
@@ -196,17 +196,17 @@
       }
       g.stroke();
       cap = square
-        ? '一个基波周期 · 1 个脉冲'
+        ? '1 pulse per cycle'
         : sync
-          ? '一个基波周期 · ' + f.n + ' 个脉冲'
+          ? f.n + ' pulses per cycle'
           : win < 1
-            ? '放大 · 只截取约 30 个载波周期'
-            : '一个基波周期 · 载波 ' + Math.round(ratio) + ' 个';
+            ? 'zoom: ~30 carrier periods'
+            : Math.round(ratio) + ' carriers per cycle';
     } else {
       g.fillStyle = 'rgba(255,255,255,.28)';
       g.font = '12px sans-serif';
       g.textAlign = 'center';
-      g.fillText('逆变器不工作，没有开关波形', w / 2, yc + 4);
+      g.fillText('Inverter is not running, no switching waveform', w / 2, yc + 4);
     }
     if (cap !== wave.cap) {
       wave.cap = cap;

@@ -1,5 +1,5 @@
-// 在 Node 里跑页面的逻辑层（modes.js、drive.js），把结果以 JSON 打印出来。
-// tests/test_web_logic.py 用它和 Python 版对账：两边的模式表与传动数值必须一致。
+// Run the logic layer of the page (modes.js, drive.js, table.js) in Node and print the results as JSON.
+// tests/test_web_logic.py uses it to cross-check against the Python version: the mode tables and drivetrain numbers on both sides must agree.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -33,11 +33,11 @@ for (const v of [0, 10, 60, 130]) {
     }
   }
 }
-// 过调制的基波幅值与参考波幅值换算（和 vvvflab/pwm.py 对账）
+// Fundamental amplitude vs reference amplitude in overmodulation (cross-checked with vvvflab/pwm.py)
 out.fund = [0.3, 1, 1.2, 2, 5, 15].map((m) => ({ m, v: Table.fundamentalFromReference(m) }));
 out.ref = [0.3, 1, 1.05, 1.1, 1.2, 1.27, 1.2732].map((v) => ({ v, m: Table.referenceForFundamental(v) }));
 
-// 按车速分段的模式表：预设、检查结果、查表
+// Mode tables split by vehicle speed: presets, validation results, lookup
 const presets = Table.presets();
 out.tables = {};
 for (const key of Object.keys(presets)) {
@@ -50,7 +50,7 @@ for (const v of [0, 10, 34.4, 34.5, 36, 38, 100, 160]) {
 }
 out.v1 = [0, 1, 20, 38, 60, 110, 160].map((v) => ({ v, v1: Table.v1Target(presets.reference, v) }));
 
-// 低脉冲数同步调制：反解出的参考波幅值（pytest 里用独立的 numpy 数值积分验证实际基波）
+// Synchronous modulation with few pulses: the back-solved reference amplitude (pytest checks the actual fundamental with an independent numpy numerical integration)
 out.syncCal = [];
 for (const n of [3, 5, 9, 15, 21]) {
   for (const v1 of [0.1, 0.5, 0.95, 1.0, 1.15, 1.25]) {
@@ -67,13 +67,13 @@ out.invalidTables = {};
   out.invalidTables.oddN = Table.validate(good);
 }
 
-// 制动（发电状态）与列车动力学
+// Braking (generator state) and train dynamics
 out.brake = [0, 10, 60, 130].map((v) => Object.assign({ v }, Drive.compute(v, 2, false, undefined, true)));
 out.dyn = [];
 for (const mode of ['power', 'coast', 'brake']) {
   for (const v of [0, 10, 40, 80, 160]) out.dyn.push({ mode, v, next: Drive.stepSpeed(v, mode, 0.1) });
 }
-// 主手柄：档位表、转差与力矩成正比、各档位的加减速、逆变器什么时候在运转
+// Master controller: the notch table, slip proportional to torque, acceleration of each notch, when the inverter is running
 out.notches = Drive.NOTCHES.map((n) => Object.assign({}, n));
 out.notchN = Drive.NOTCH_N;
 out.load = [];
@@ -101,7 +101,7 @@ for (const key of Object.keys(presets)) {
     out.carrier.push({ preset: key, v, a: Table.carrierAt(presets[key], v, f1), b: Table.operatingPoint(presets[key], v, f1).fc });
   }
 }
-// 音阶台阶：音名 ↔ 频率、音阶、在一段速度范围里铺一串载波恒定的异步段
+// Scale steps: note names ↔ frequencies, scales, and laying a run of constant-carrier asynchronous segments over a speed range
 out.notes = Object.fromEntries(['A4', 'C4', 'F#3', 'Bb4', 'c5', '523.25 Hz', '440', 'hello', 'H4', ''].map((s) => [s, Table.noteFrequency(s)]));
 out.scales = {
   major: Table.scaleNotes('C4', 'major'),
@@ -117,7 +117,7 @@ out.nearest = [440, 261.63, 523.25, 450].map((f) => Object.assign({ f }, Table.n
   Table.staircase(t1, 0, 15, majorHz);
   out.stair1 = { table: t1, problems: Table.validate(t1), freqs: majorHz };
 
-  // 范围在中间、跨过好几段，里面有异步斜坡：范围外的载波曲线必须原样不动
+  // A range in the middle that crosses several segments, including an asynchronous ramp: the carrier curve outside the range must stay exactly as it was
   const t2 = { name: 'ramp', maxSpeed: 160, vBase: 38, vFull: 100, segments: [{ to: 40, kind: 'async', fc0: 100, fc1: 900 }, { to: 80, kind: 'sync', n: 9 }, { to: 160, kind: 'wide3' }] };
   const probe = [0, 3, 9.9, 11, 13, 16, 19, 20.1, 25, 39.9, 41, 60, 100];
   const carriers = (t) => probe.map((v) => ({ v, fc: Table.carrierAt(t, v, 50) }));
@@ -125,7 +125,7 @@ out.nearest = [440, 261.63, 523.25, 450].map((f) => Object.assign({ f }, Table.n
   Table.staircase(t2b, 10, 20, [200, 300, 400, 500]);
   out.stair2 = { table: t2b, problems: Table.validate(t2b), before: carriers(t2), after: carriers(t2b) };
 
-  // 横跨好几段（把 GTO 表的 5–45 km/h 换成台阶），以及一直铺到最高速度
+  // Across several segments (replace 5–45 km/h of the GTO table with steps), and all the way up to the top speed
   const t3 = Table.clone(presets.gto);
   Table.staircase(t3, 5, 45, [150, 200, 250, 300, 350, 400, 450, 500]);
   const t4 = Table.clone(presets.reference);

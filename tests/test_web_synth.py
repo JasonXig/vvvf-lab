@@ -1,4 +1,4 @@
-"""网页版声音合成核心（web/js/synth.js）与 Python 版 DriveSynth 对账。没装 Node.js 时整个文件跳过。"""
+"""Cross-check the web sound-synthesis core (web/js/synth.js) against the Python DriveSynth. The whole file is skipped if Node.js is not installed."""
 import json
 import shutil
 import subprocess
@@ -15,7 +15,7 @@ NODE = shutil.which("node")
 SCRIPT = Path(__file__).resolve().parents[1] / "web" / "tests" / "dump_synth.js"
 FS = 48000
 
-pytestmark = pytest.mark.skipif(NODE is None, reason="没有安装 Node.js")
+pytestmark = pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
 
 
 @pytest.fixture(scope="module")
@@ -80,13 +80,13 @@ def test_js_sync_sidebands_are_present_and_the_carrier_itself_is_cancelled(js, n
 
 
 def test_js_three_phase_is_balanced_for_n_not_multiple_of_3(js):
-    """N = 7 不是 3 的倍数。每相的载波锁在自己的参考波上，三相仍然严格互差 120°：
-    相电压里只有“奇次且不是 3 的倍数”的谐波，偶次和 3 的倍数次都消失。"""
+    """N = 7 is not a multiple of 3. Each phase carrier is locked to its own reference, so the three phases are still exactly 120° apart:
+    the phase voltage contains only harmonics that are odd and not multiples of 3; even harmonics and multiples of 3 vanish."""
     case = next(c for c in js["cases"] if c["name"] == "sync7")
     f1 = int(case["f1"])
-    audio = js["audio"]["sync7"]  # 正好 45 个基波周期，谐波落在整数 bin 上
+    audio = js["audio"]["sync7"]  # exactly 45 fundamental periods, so the harmonics fall on integer bins
     spec = np.abs(np.fft.rfft(audio)) * 2 / len(audio)
-    orders = range(5, 4000 // f1)  # 100 Hz 高通会滤掉低次，从 5 次起看
+    orders = range(5, 4000 // f1)  # the 100 Hz high-pass removes the low orders, so start at the 5th
     allowed = [spec[h * f1] for h in orders if h % 2 == 1 and h % 3 != 0]
     forbidden = [spec[h * f1] for h in orders if h % 2 == 0 or h % 3 == 0]
     assert max(allowed) > 0
@@ -94,15 +94,15 @@ def test_js_three_phase_is_balanced_for_n_not_multiple_of_3(js):
 
 
 def test_js_three_pulse_fundamental_is_cancelled_only_with_calibrated_modulation(js):
-    """宽 3 脉冲时，减掉的“基波”必须是输出里真实存在的那个，否则基波会以一条单独的谱线漏进声音里。
-    cal 用反解出的参考波幅值（实际基波 = v1），raw 按大载波比的公式取 m = v1（实际基波只有 v1 的 2/3）。"""
-    f1 = int(next(c for c in js["cases"] if c["name"] == "wide3cal")["f1"])  # 正好 150 个周期，谐波落在整数 bin 上
+    """With wide 3-pulse, the subtracted "fundamental" must be the one that really exists in the output, otherwise the fundamental leaks into the sound as a separate line.
+    cal uses the back-solved reference amplitude (actual fundamental = v1); raw takes m = v1 from the large-carrier-ratio formula (the actual fundamental is only 2/3 of v1)."""
+    f1 = int(next(c for c in js["cases"] if c["name"] == "wide3cal")["f1"])  # exactly 150 periods, so the harmonics fall on integer bins
 
     def leak(name):
         spec = np.abs(np.fft.rfft(js["audio"][name])) * 2 / len(js["audio"][name])
         return spec[f1] / max(spec[5 * f1], spec[7 * f1])
 
-    assert leak("wide3cal") < 0.01  # 比最强的谐波低 40 dB 以上
+    assert leak("wide3cal") < 0.01  # more than 40 dB below the strongest harmonic
     assert leak("wide3raw") > 5 * leak("wide3cal")
 
 

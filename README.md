@@ -1,81 +1,79 @@
 # VVVF Lab
 
-**An interactive lab for train traction inverters (VVVF): pick the modulation mode for every speed range, see the switching waveform and spectrum, watch a 3D motor spin, and hear the inverter sound — all synthesized from the same PWM waveform.**
-Python desktop lab + a zero-install browser demo (open `web/index.html`).
+**An interactive lab for train traction inverters (VVVF): pick the modulation mode for every speed range, see the switching waveform and spectrum, watch a 3D motor spin, and hear the inverter sound, all synthesized from the same PWM waveform.**
+A Python desktop lab plus a zero-install browser demo (open `web/index.html`).
 
-列车牵引变流器（VVVF）的交互式模拟与声谱分析平台：自己决定每个速度段用什么调制（异步载波、同步 N 脉冲、宽 3 脉冲、方波），实时看开关波形与频谱，看 3D 电机转起来，并听到由同一套开关波形合成的逆变器声音。
+![Web demo: induction motor, power notch P3; the spectrogram shows async, sync and wide 3-pulse stepping up one after another](docs/web_desk_induction.png)
 
-![网页版：笼型异步电机，牵引 P3，声谱图里能看到异步、同步、宽 3 脉冲依次换挡](docs/web_desk_induction.png)
+## Try it
 
-## 试一试
+**Live demo:** https://jasonxig.github.io/vvvf-lab/
 
-**在线试玩**：https://jasonxig.github.io/vvvf-lab/
+**Web demo (recommended, nothing to install):** you can also download this repository and double-click `web/index.html` (on Windows, `run_web.bat` works too). Open it in Chrome or Edge (tested in Edge; Firefox and Safari are untested), click the page once to enable sound, and push the master controller to hear it.
 
-**网页版（推荐，不用装任何东西）**：也可以下载本仓库，双击 `web/index.html`（Windows 上也可以双击 `run_web.bat`）。用 Chrome 或 Edge 打开（Edge 里测过；Firefox 和 Safari 没测过），点一下页面启用声音，推一下主手柄就能听到。
+- **Master controller:** B5 … B1, N, H, P1 … P4. Drag it, click a notch, or use the keyboard (↑ ↓ / W S, Space for neutral, H to hold speed). Move it back to neutral and the inverter keeps running, so the sound continues and the pitch follows the speed slowly.
+- **Mode ruler:** the speedometer, a slider for jumping to a speed, and the editor of the mode tables in one. The two lanes are the power table and the brake table, each segment is coloured by modulation kind, and the white line is the carrier frequency curve. Drag the white vertical line to jump to any speed, drag a boundary to change a speed range, and click a segment to change its modulation kind, carrier frequency or pulse count, then press "Listen" to hear it at once.
+- **Scale steps:** click the ♪ beside a lane name to lay a "do re mi" run of rising asynchronous modulations over the first 15 km/h in one click.
+- **3D motor:** squirrel-cage induction, surface-mounted PM and interior PM motors; the faster the rotor turns the more it blurs and streaks. A new motor type only needs one rotor file.
+- Top right: a spectrogram and the switching waveform of the phase-A leg. It works on a phone in portrait too.
 
-- **主手柄**：B5 … B1、N、H、P1 … P4，拖动、点格子或用键盘（↑ ↓ / W S，空格回空档，H 定速）。松回空档，逆变器仍在运转，声音持续，音调随车速缓慢变化。
-- **模式标尺**：既是速度表，也是拖动跳速的滑杆，还是模式表的编辑器。上下两条泳道是力行表和制动表，每段按调制方式上色，白线是载波频率曲线；拖白色竖线跳到任意车速，拖分界线改速度范围，点一段改调制方式、载波频率或脉冲数，按“试听”马上听到。
-- **音阶台阶**：点泳道名旁的 ♪，一键在前 15 km/h 铺出“哆来咪”那样一级一级往上的异步调制。
-- **3D 电机**：笼型异步、表贴式永磁、内置式永磁三种，转速越高转子越模糊并出现拖影；新增一种电机只需要写一个转子文件。
-- 右上角是声谱图和 A 相桥臂的开关波形，手机竖屏也能用。
+All features, keyboard shortcuts, URL parameters and the code structure are in [web/README.md](web/README.md).
 
-全部功能、键盘、网址参数和代码结构见 [web/README.md](web/README.md)。
+![Click a segment on the ruler: change the modulation kind, carrier frequency and pulse count, then press "Listen"](docs/web_ruler_editor.png)
 
-![点标尺上的一段：改调制方式、载波频率、脉冲数，按“试听”马上听到](docs/web_ruler_editor.png)
+**Listen first (no UI needed):** `examples/` has two 18-second acceleration sweeps (speed from 0 to 130 km/h, with the modes switching automatically according to the mode table).
 
-**先听一听（不用开界面）**：`examples/` 里有两段 18 秒的加速扫频（速度从 0 加到 130 km/h，模式按模式表自动切换）。
+- `gto_sweep.wav`: GTO type, switching limit 420 Hz, the pitch drops several times, louder.
+- `igbt_sweep.wav`: IGBT type, limit 1.5 kHz, a wide and high async range with only two shifts, quieter.
 
-- `gto_sweep.wav`：GTO 型，开关频率上限 420 Hz，音调多次骤降，音量更大。
-- `igbt_sweep.wav`：IGBT 型，上限 1.5 kHz，异步段又宽又高，只换挡两次，音量更小。
+## Python desktop lab (P1: three-phase SPWM bench)
 
-## Python 桌面版（P1：三相 SPWM 实验台）
-
-拖动速度，实时看到开关波形与线电压、线电压频谱（叠加双重傅里叶解析谱线）、模式图（载波频率随基波频率的锯齿）和声谱图，并听到声音。
+Drag the speed and see the switching waveform and line voltage, the line-voltage spectrum (with the double-Fourier analytic lines overlaid), the mode map (the sawtooth of carrier frequency against fundamental frequency) and a spectrogram in real time, and hear the sound.
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # Linux / macOS：source .venv/bin/activate
+.venv\Scripts\activate          # Linux / macOS: source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m vvvflab               # 启动界面
-python -m pytest                # 运行测试
+python -m vvvflab               # start the UI
+python -m pytest                # run the tests
 ```
 
-装好 `.venv` 之后，Windows 上也可以直接双击 `run.bat` 启动界面。只想跑核心模块和测试时，装 `numpy`、`scipy`、`pytest` 就够了，界面依赖（PySide6、pyqtgraph、sounddevice）不是必须的；网页版的对账测试需要 Node.js，没装会自动跳过。
+Once `.venv` is set up, on Windows you can also double-click `run.bat` to start the UI. To run only the core modules and the tests, `numpy`, `scipy` and `pytest` are enough; the UI dependencies (PySide6, pyqtgraph, sounddevice) are optional. The cross-check tests for the web demo need Node.js and are skipped automatically without it.
 
-- **模式表**：`GTO 型`（开关频率上限 420 Hz）和 `IGBT 型`（1.5 kHz）两个预设，上限取自 Nagoya 大学 Furuhashi 课件里新干线 300 系与 N700 系的数据；也可以选“手动设置”，自己指定异步、同步 N 脉冲或方波。
-- **自动加速**：18 秒内把速度从 0 拉到 130 km/h，模式按模式表自动切换，打开“播放声音”就能听到载波随速度爬升、触顶骤降的“换挡声”。默认音量 30%，戴耳机请先确认音量。
-- **图**：极电压与载波、线电压、线电压频谱（橙色圆圈是解析谱线）、模式图（红点是当前工作点）、最近 4 秒的声谱图。
-- 自己重新渲染扫频：`python -m vvvflab.render gto my.wav --seconds 18`（在项目目录里运行）。
+- **Mode map:** two presets, `GTO type` (switching limit 420 Hz) and `IGBT type` (1.5 kHz), whose limits come from Nagoya University lecture notes on Shinkansen series 300 and N700; or choose "Manual" and set async, synchronous N pulses or square wave yourself.
+- **Auto-accelerate:** takes the speed from 0 to 130 km/h in 18 seconds with the modes switching automatically; turn on "Play sound" to hear the carrier climb with speed and drop when it hits the limit, the "shift sound". The default volume is 30%; check it before putting on headphones.
+- **Plots:** pole voltage and carrier, line voltage, line-voltage spectrum (orange circles are analytic lines), mode map (the red dot is the current operating point), and a spectrogram of the last 4 seconds.
+- To re-render the sweeps yourself: `python -m vvvflab.render gto my.wav --seconds 18` (run from the project directory).
 
-## 代码结构
+## Code structure
 
-| 文件 | 内容 |
+| File | Contents |
 | --- | --- |
-| `vvvflab/pwm.py` | 三相两电平 SPWM 开关波形、工作点、过调制时基波幅值与参考波幅值的换算 |
-| `vvvflab/modes.py` | 模式表（异步 / 同步 N 脉冲 / 方波分段）、V/f 曲线、按器件上限生成默认模式表的规则 |
-| `vvvflab/spectrum.py` | FFT 幅值谱、双重傅里叶（贝塞尔）解析谱线、声谱图 |
-| `vvvflab/synth.py` | 实时声音合成：开关波形 → 电流纹波 → 音频，带环形缓冲供声谱图使用 |
-| `vvvflab/app.py` | PySide6 + pyqtgraph 界面与 sounddevice 音频输出 |
-| `web/` | 网页版：运转台、按车速分段的模式表、实时声音合成（Web Audio）、3D 电机（three.js）；逻辑层和声音合成核心与 Python 版互相对账 |
-| `tests/` | 波形、频谱与解析解对照、模式表、合成器、界面冒烟、网页逻辑与声音对账的自动化测试 |
+| `vvvflab/pwm.py` | Switching waveforms of a three-phase two-level SPWM, operating points, conversion between fundamental and reference amplitude in overmodulation |
+| `vvvflab/modes.py` | Mode tables (async / synchronous N pulses / square-wave segments), the V/f curve, and the rule that generates a default table from a device limit |
+| `vvvflab/spectrum.py` | FFT amplitude spectrum, double-Fourier (Bessel) analytic lines, spectrogram |
+| `vvvflab/synth.py` | Real-time sound synthesis: switching waveform → current ripple → audio, with a ring buffer for the spectrogram |
+| `vvvflab/app.py` | PySide6 + pyqtgraph UI and sounddevice audio output |
+| `web/` | The web demo: cab deck, mode tables split by speed, real-time sound synthesis (Web Audio), 3D motor (three.js); the logic layer and the synthesis core are cross-checked against the Python version |
+| `tests/` | Automated tests: waveforms, spectra against analytic solutions, mode tables, the synthesizer, a UI smoke test, and cross-checks of the web logic and sound |
 
-## 模型与已知限制
+## Model and known limitations
 
-这是学习和试听用的模型，不是对某个具体车型的复刻：**声音的谱线位置由开关波形严格决定，已用独立公式核对；但响度和音色的真实感还没有拿真实车辆录音对比过。**
+This is a model for learning and listening, not a replica of any particular train: **the positions of the spectral lines in the sound are fixed strictly by the switching waveform and have been checked against independent formulas, but the realism of loudness and timbre has not been compared with recordings of real trains.**
 
-- 电压单位为 Vdc/2，三相两电平，自然采样的正弦–三角比较。N 取 3 的奇数倍，三相波形才互为 120° 平移且半波对称（网页版每相的载波锁在自己的参考波上，任意奇数 N 都能保持三相对称）。
-- 声音取电流纹波作为磁励力的代理量：`i_rip ∝ ∫(v − v1) dt`，即假设磁励力正比于电流谐波、可听频率等于谐波频率。这只是第一个假设，要靠真实录音检验。
-- 三相线电压里载波本身（n = 0）和 3 的倍数次边带相互抵消，所以可听的主要是 `fc ± 2f1` 这类边带，而不是载波。
-- “音调 ≈ 载波频率”只是近似：调制比 m 很小时，第二载波组 `2fc ± f1` 比第一组 `fc ± 2f1` 更强（两组在 m ≈ 0.7 一样响），所以低速时听到的音高约是载波的 2 倍。
-- 换挡（改变 N）和异步转同步时保持载波相位连续，避免咔嗒声（网页版随后还会把同步载波的相位在 40 ms 内滑到对称位置）；真实车辆的处理策略不同，P3 会比较几种切换策略。
-- 过调制和低脉冲数区域，Python 版的基波幅值按“载波比趋于无穷”的公式近似，3 脉冲附近会有偏差（三脉冲、m = 0.95 时实际基波只有 0.64）。网页版对 N ≤ 21 的同步段数值反解参考波幅值，让实际基波等于电压指令；Python 版还没改。
-- 时域采样把开关边沿量化到采样网格上：高于 −40 dBc 的谱线偏差在每载波周期 6000 点时约 0.4%，480 点时可达 5.8%。
-- 预设模式表是按生成规则画出的示意，不对应任何具体车型；速度与基波频率的换算、传动比、列车动力学也只是演示用的简化。
+- Voltages are in units of Vdc/2, three-phase two-level, naturally sampled sine-triangle comparison. N must be an odd multiple of 3 for the three phases to be 120° apart with half-wave symmetry (in the web demo each phase carrier is locked to its own reference, so any odd N keeps the three phases symmetric).
+- The sound uses current ripple as a proxy for the magnetic exciting force: `i_rip ∝ ∫(v − v1) dt`, i.e. it assumes the force is proportional to the current harmonics and the audible frequency equals the harmonic frequency. This is only a first assumption and needs checking against real recordings.
+- In the three-phase line voltage the carrier itself (n = 0) and the sidebands whose order is a multiple of 3 cancel, so what you hear is mainly sidebands such as `fc ± 2f1`, not the carrier.
+- "Pitch ≈ carrier frequency" is only an approximation: when the modulation index m is small the second carrier group `2fc ± f1` is stronger than the first group `fc ± 2f1` (the two are equally loud at m ≈ 0.7), so at low speed the pitch you hear is about twice the carrier.
+- When shifting (changing N) and when going from asynchronous to synchronous the carrier phase is kept continuous to avoid clicks (the web demo then glides the synchronous carrier phase to the symmetric position within 40 ms); real trains handle this differently, and P3 will compare several switching strategies.
+- In the overmodulation and few-pulse regions the Python version approximates the fundamental amplitude with the "infinite carrier ratio" formula, which is off near 3 pulses (3 pulses at m = 0.95 give an actual fundamental of only 0.64). The web demo back-solves the reference amplitude numerically for synchronous segments with N ≤ 21 so the actual fundamental equals the voltage command; the Python version has not been changed yet.
+- Time-domain sampling quantizes switching edges to the sample grid: for lines above −40 dBc the error is about 0.4% at 6000 points per carrier period and up to 5.8% at 480 points.
+- The preset mode tables are sketches drawn from a generation rule and do not correspond to any specific train; the conversion between speed and fundamental frequency, the gear ratio and the train dynamics are also only simplified demo models.
 
-## 路线
+## Roadmap
 
-P1 三相 SPWM 实验台 → P2 感应电机稳态 → P3 模式表编辑器与切换策略（发布 v0.1）→ P4 列车动力学闭环 → P5 永磁电机与矢量控制 → P6 损耗模型与录音反推。网页版目前已有运转台、模式标尺、实时声音和 3D 电机，下一步是自定义电机形式（外转子、轴向磁通、直线）。
+P1 three-phase SPWM bench → P2 induction motor steady state → P3 mode-table editor and shifting strategies (release v0.1) → P4 closed loop with train dynamics → P5 PM motors and vector control → P6 loss model and inferring the modes from recordings. The web demo already has the cab deck, the mode ruler, real-time sound and a 3D motor; the next step is custom motor forms (outer rotor, axial flux, linear).
 
-## 许可证
+## License
 
-[MIT](LICENSE)。`web/vendor/three.min.js` 是 [three.js](https://threejs.org) r159（MIT，版权属于 three.js 作者），许可证文本见 [web/vendor/LICENSE-three.txt](web/vendor/LICENSE-three.txt)。
+[MIT](LICENSE). `web/vendor/three.min.js` is [three.js](https://threejs.org) r159 (MIT, copyright the three.js authors); its license text is in [web/vendor/LICENSE-three.txt](web/vendor/LICENSE-three.txt).

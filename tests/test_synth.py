@@ -12,14 +12,14 @@ def steady_spectrum(op, seconds=1.0, volume=0.5):
     synth.set_volume(volume)
     synth._gain = volume
     synth.set_target(op)
-    synth.render(FS // 2)  # 让滤波器状态稳定
+    synth.render(FS // 2)  # let the filter state settle
     x = synth.render(int(seconds * FS)).astype(float)
     freqs, amps = amplitude_spectrum(x, FS, "hann")
     return x, freqs, amps
 
 
 def line(amps, f):
-    """频率 f 附近的谱线幅值（1 Hz 分辨率下取 ±1 个 bin 的最大值）。"""
+    """Line amplitude near frequency f (the maximum over ±1 bin at 1 Hz resolution)."""
     i = int(round(f))
     return amps[i - 1 : i + 2].max()
 
@@ -84,7 +84,7 @@ def test_lower_carrier_is_louder_for_the_same_voltage():
 def test_ring_buffer_returns_the_most_recent_samples_across_wrap_around():
     synth = DriveSynth(FS, ring_seconds=1.0, soft_start=False)
     synth.set_target(make_point(50.0, "async", m=0.5, fc=800.0))
-    chunks = [synth.render(7000) for _ in range(9)]  # 63000 > 48000，环形缓冲回绕
+    chunks = [synth.render(7000) for _ in range(9)]  # 63000 > 48000, so the ring buffer wraps around
     tail = np.concatenate(chunks)[-480:]
     assert np.array_equal(synth.recent(0.01), tail)
     assert len(synth.recent(10.0)) == FS

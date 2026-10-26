@@ -1,3 +1,3 @@
-"""VVVF Lab：列车牵引变流器交互式模拟与声谱分析平台。"""
+"""VVVF Lab: an interactive lab for train traction inverters (simulation, spectra and sound)."""
 
 __version__ = "0.1.0"

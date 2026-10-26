@@ -1,4 +1,4 @@
-// 页面主程序：手柄 → 动力状态 → 车速 → 逆变器工作点 → 声音与 3D 电机。
+// Page main program: master controller → driving state → speed → inverter operating point → sound and 3D motor.
 (function () {
   'use strict';
 
@@ -10,7 +10,7 @@
   const TAU = Math.PI * 2;
   const DEG = Math.PI / 180;
   const MAX_SPEED = 160; // km/h
-  const RPM_MAX = 6000; // 转速条满量程
+  const RPM_MAX = 6000; // full scale of the speed bar
   const TABLES_KEY = 'vvvf3d.tables.v1';
   const $ = (id) => document.getElementById(id);
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -21,7 +21,7 @@
 
   const query = new URLSearchParams(window.location.search);
 
-  // ---------------------------------------------------------------- 模式表的读取与保存
+  // ---------------------------------------------------------------- Loading and saving the mode tables
   function loadTables() {
     const presets = Table.presets();
     let tables = { A: Table.clone(presets.reference), B: Table.clone(presets.reference) };
@@ -33,7 +33,7 @@
         if (!Table.validate(a).length && !Table.validate(b).length) tables = { A: a, B: b };
       }
     } catch (err) {
-      /* 读不到就用默认的 */
+      /* if it cannot be read, use the defaults */
     }
     if (presets[query.get('map')]) tables = { A: Table.clone(presets[query.get('map')]), B: Table.clone(presets[query.get('map')]) };
     return tables;
@@ -42,22 +42,22 @@
     try {
       window.localStorage.setItem(TABLES_KEY, JSON.stringify(S.tables));
     } catch (err) {
-      /* 浏览器不让存就算了 */
+      /* if the browser will not store it, never mind */
     }
   }
 
   const S = {
-    // 驾驶台
+    // cab deck
     speed: 0,
     maxSpeed: MAX_SPEED,
-    notch: Drive.NOTCH_N, // 主手柄档位（下标）
-    scrub: { active: false }, // 正在拖标尺上的竖线：车速由手拖，不按动力学积分
-    sel: null, // 标尺上选中的一段 { lane, i }
+    notch: Drive.NOTCH_N, // master controller notch (index)
+    scrub: { active: false }, // dragging the vertical line on the ruler: the speed is set by hand, not integrated by the dynamics
+    sel: null, // the segment selected on the ruler { lane, i }
     inverterOn: true,
     soundOn: true,
     volume: 0.3,
-    driveMode: 'coast', // power 牵引 | coast 空档 | hold 定速 | brake 制动（逆变器关掉时牵引和定速都变成空档）
-    power: 0, // 逆变器输出的“强度”0..1，平滑变化，控制 3D 里磁场和电流的亮暗
+    driveMode: 'coast', // power = traction | coast = neutral | hold = constant speed | brake = braking (with the inverter off, power and hold both become neutral)
+    power: 0, // "strength" of the inverter output, 0..1, smoothed; controls how bright the field and currents are in 3D
     tables: loadTables(),
     demo: false,
     demoPhase: 'accel',
@@ -65,21 +65,21 @@
     paused: false,
     audio: new NS.AudioEngine(),
     waveFrame: { run: false },
-    // 显示
+    // display
     rotMode: 'compress',
     slow: 0.0224,
     labelsOn: true,
     view: { cutaway: true, shellOpacity: 0.3, showField: true, showWinding: true, showRotorCurrent: true },
     spec: null,
     motor: null,
-    rotor: 0, // 转子的可视角度 [rad]
-    slipAngle: 0, // 旋转磁场相对转子多转（或少转）的角度，也就是转差 [rad]
-    streak: 0, // 拖影图案的相位 [圈]
+    rotor: 0, // visual angle of the rotor [rad]
+    slipAngle: 0, // how many more (or fewer) turns the rotating field makes than the rotor, i.e. the slip [rad]
+    streak: 0, // phase of the blur pattern [turns]
     drive: null,
     labelEls: [],
   };
 
-  // ---------------------------------------------------------------- 渲染器与场景
+  // ---------------------------------------------------------------- Renderer and scene
   const stage = $('stage');
   let renderer;
   try {
@@ -103,7 +103,7 @@
   rim.position.set(-1, 3, -5);
   scene.add(key, fill, rim);
 
-  // 舞台就是运转台上方那一块；电机放在正中，舞台太“扁”或太“瘦”时把镜头拉远，保证整台电机放得进去
+  // The stage is the part above the cab deck; the motor sits in the middle, and when the stage is too flat or too narrow the camera is pulled back so the whole motor fits
   function resize() {
     const w = stage.clientWidth;
     const h = stage.clientHeight;
@@ -113,12 +113,12 @@
     camera.updateProjectionMatrix();
     const tanV = Math.tan((camera.fov * Math.PI) / 360);
     const tanH = tanV * camera.aspect;
-    const R = 1.7; // 电机的有效外接球半径（真实外接球约 2.04，默认视角下轮廓要窄得多）
+    const R = 1.7; // effective bounding-sphere radius of the motor (the true one is about 2.04; the silhouette from the default view is much narrower)
     const dV = (1.08 * R * Math.sqrt(1 + tanV * tanV)) / tanV;
     const dH = (1.08 * R * Math.sqrt(1 + tanH * tanH)) / tanH;
     orbit.fit = Math.max(0.85, Math.max(dV, dH) / orbit.home.dist);
   }
-  // 运转台的高度决定舞台的高度（窄屏时由样式表固定为屏幕的 60%）
+  // The height of the cab deck sets the height of the stage (on narrow screens the stylesheet fixes it at 60% of the screen)
   const phoneLayout = window.matchMedia('(max-width: 760px)');
   function syncDeckHeight() {
     const root = document.documentElement;
@@ -128,7 +128,7 @@
   }
   window.addEventListener('resize', syncDeckHeight);
 
-  // ---------------------------------------------------------------- 轨道相机（拖动旋转、滚轮缩放、双击复位）
+  // ---------------------------------------------------------------- Orbit camera (drag to rotate, wheel to zoom, double-click to reset)
   class Orbit {
     constructor(cam, dom) {
       this.cam = cam;
@@ -136,7 +136,7 @@
       this.target = new T.Vector3(0, 0, 0);
       this.home = { az: 0.78, pol: 1.12, dist: 6.4 };
       Object.assign(this, this.home);
-      this.fit = 1; // 舞台形状不合适时额外拉远的倍数，由 resize() 设定
+      this.fit = 1; // extra pull-back factor when the stage shape is unsuitable, set by resize()
       this.pointers = new Map();
       this.pinch = 0;
       dom.addEventListener('pointerdown', (e) => this.down(e));
@@ -198,7 +198,7 @@
   }
   const orbit = new Orbit(camera, $('gl'));
 
-  // ---------------------------------------------------------------- 转速 → 颜色、转速 → 可视转速
+  // ---------------------------------------------------------------- Speed → colour, speed → visual speed
   const RPM_STOPS = [
     [0, 0x3b82f6],
     [0.25, 0x22d3ee],
@@ -218,14 +218,14 @@
     return out.copy(RPM_STOPS[RPM_STOPS.length - 1][1]);
   }
 
-  // 真实转速 r [rev/s] → 画面里转子转的转速 [rev/s]：1 圈/秒以内按真实转速转，再快就压缩，
-  // 否则 60 帧/秒的画面里会出现“车轮倒转”的假象，也看不出快慢。
+  // Real speed r [rev/s] → the speed at which the rotor turns on screen [rev/s]: up to 1 rev/s it follows the real speed, beyond that it is compressed,
+  // otherwise at 60 frames/s you get the "wagon-wheel" illusion and cannot tell fast from slow.
   function compress(r) {
     if (r <= 1) return r;
     return 1 + (4.2 * Math.log(r)) / Math.log(80);
   }
 
-  // ---------------------------------------------------------------- 电机的建立与替换
+  // ---------------------------------------------------------------- Building and replacing the motor
   function showError(msg) {
     $('specErr').textContent = msg || '';
   }
@@ -263,16 +263,16 @@
     buildLabels();
     $('motorType').value = motor.spec.type;
     $('preset').value = String(presetIndex === undefined ? -1 : presetIndex);
-    if (NS.UI && NS.UI.ready) NS.UI.refreshTables(); // 极对数和传动比变了，标尺上的载波曲线要重算
+    if (NS.UI && NS.UI.ready) NS.UI.refreshTables(); // pole pairs and gear ratio changed, so the carrier curves on the ruler must be recomputed
     return true;
   }
 
-  // ---------------------------------------------------------------- 自动演示：加速 → 空档惰行（声音持续）→ 制动停车，循环
+  // ---------------------------------------------------------------- Auto demo: accelerate → neutral coasting (sound continues) → brake to a stop, in a loop
   function setDemo(on) {
     S.demo = on;
     S.demoPhase = 'accel';
     S.demoT = 0;
-    if (on) S.inverterOn = true; // 没有逆变器就加不了速
+    if (on) S.inverterOn = true; // without the inverter there is no acceleration
   }
   function demoStep(dt) {
     const P4 = Drive.notchIndex('P4');
@@ -314,32 +314,32 @@
     }
   }
 
-  // ---------------------------------------------------------------- 每帧
+  // ---------------------------------------------------------------- Every frame
   const speedColor = new T.Color();
 
   function step(dt, nowMs) {
-    // 1) 手柄 → 动力状态 → 车速
+    // 1) controller → driving state → speed
     if (S.demo) demoStep(dt);
     const nt = Drive.NOTCHES[S.notch];
     const mode = Drive.effectiveMode(nt.mode, S.inverterOn);
     S.driveMode = mode;
     if (!S.scrub.active) S.speed = Drive.stepSpeed(S.speed, mode, dt, { maxSpeed: S.maxSpeed, frac: nt.frac });
 
-    // 2) 车速 → 电机转速、基波频率；模式表 → 逆变器工作点
+    // 2) speed → motor speed and fundamental frequency; mode table → inverter operating point
     const m = S.motor;
     const p = m.polePairs;
     const braking = mode === 'brake';
-    const load = Drive.torqueLoad(mode, nt.frac); // 转差与力矩成正比：空档时转差为零，旋转磁场和转子同步
+    const load = Drive.torqueLoad(mode, nt.frac); // slip is proportional to torque: zero slip in neutral, the rotating field is in sync with the rotor
     const d = Drive.compute(S.speed, p, m.synchronous, S.spec.drivetrain, braking, load);
     S.drive = d;
     const tabKey = braking ? 'B' : 'A';
     const table = S.tables[tabKey];
     const pt = Table.operatingPoint(table, S.speed, d.f1);
-    const { run, why } = Drive.inverterRun(mode, S.inverterOn, d.f1); // 空档时逆变器仍在运转，声音持续
-    const target = run ? 0.3 + 0.7 * load : 0; // 空档时只有励磁电流，磁场和电流比牵引时弱
+    const { run, why } = Drive.inverterRun(mode, S.inverterOn, d.f1); // in neutral the inverter keeps running, so the sound continues
+    const target = run ? 0.3 + 0.7 * load : 0; // in neutral there is only magnetizing current, so the field and currents are weaker than under power
     S.power += (target - S.power) * (1 - Math.exp(-dt / 0.12));
 
-    // 3) 声音
+    // 3) sound
     if (S.audio.mode !== 'off') {
       S.audio.send({
         kind: pt.kind,
@@ -353,7 +353,7 @@
       });
     }
 
-    // 4) 3D 电机：可视转速、旋转磁场、绕组电流
+    // 4) 3D motor: visual speed, rotating field, winding currents
     let vr;
     let vs;
     if (S.rotMode === 'compress') {
@@ -365,10 +365,10 @@
     }
     S.rotor = (S.rotor + TAU * vr * dt) % TAU;
     S.slipAngle = (S.slipAngle + TAU * vs * dt) % TAU;
-    // 异步电机：磁场比转子多转（牵引）或少转（制动）一个转差；永磁电机：磁场超前（牵引）或滞后（制动）一个负载角，空档时没有负载角
+    // Induction motor: the field makes more (power) or fewer (braking) turns than the rotor by one slip; permanent-magnet motor: the field leads (power) or lags (braking) by one load angle, and there is none in neutral
     const lead = (S.spec.loadAngleDeg || 0) * DEG * Math.min(1, load * 1.2);
     const field = S.rotor + (m.synchronous ? (braking ? -lead : lead) : S.slipAngle);
-    const psi = p * field; // 电角度
+    const psi = p * field; // electrical angle
     const amp = S.power;
     const currents = [Math.cos(psi) * amp, Math.cos(psi - TAU / 3) * amp, Math.cos(psi - (2 * TAU) / 3) * amp];
     S.streak = (S.streak + Math.min(vr, 1.6) * dt) % 1;
@@ -385,7 +385,7 @@
       speedColor,
     });
 
-    // 5) 界面
+    // 5) UI
     const segKind = table.segments[pt.seg].kind;
     S.waveFrame = { run, kind: pt.kind, segKind, n: pt.n, fc: pt.fc, f1: d.f1, m: pt.m };
     NS.UI.update(
@@ -410,7 +410,7 @@
     );
   }
 
-  // ---------------------------------------------------------------- 部件标注
+  // ---------------------------------------------------------------- Part labels
   const tmpV = new T.Vector3();
   function placeLabels() {
     const w = stage.clientWidth;
@@ -426,20 +426,20 @@
     });
   }
 
-  // ---------------------------------------------------------------- 抽屉里的电机、显示选项
+  // ---------------------------------------------------------------- Motor and display options in the drawer
   function slowFactor(x) {
-    return Math.pow(10, -3 + 3 * (x / 100)); // 滑条 0..100 → 1/1000 .. 1
+    return Math.pow(10, -3 + 3 * (x / 100)); // slider 0..100 → 1/1000 .. 1
   }
   function slowText(f) {
-    return f >= 0.995 ? '1×（真实）' : '1/' + Math.round(1 / f) + '×';
+    return f >= 0.995 ? '1× (real)' : '1/' + Math.round(1 / f) + '×';
   }
   function updateRotNote() {
     $('slowRow').hidden = S.rotMode !== 'real';
     $('slowOut').textContent = slowText(S.slow);
     $('rotNote').textContent =
       S.rotMode === 'compress'
-        ? '低速按真实转速转；转得更快时画面里的转速被压缩，并出现拖影，拖影颜色随转速变化。真实转速看运转台上的转速条。'
-        : '转子和旋转磁场都按真实转速的固定比例放慢。转速很高时，要把倍数调得很小才看得清。';
+        ? 'At low speed the rotor turns at its real speed; faster than that the on-screen speed is compressed and a blur appears, whose colour follows the speed. For the real speed see the speed bar on the cab deck.'
+        : 'The rotor and the rotating field are both slowed by a fixed ratio of the real speed. At high speed you have to set the ratio very small to see anything.';
   }
 
   function wire() {
@@ -452,7 +452,7 @@
     const presets = K.presetList();
     const none = document.createElement('option');
     none.value = '-1';
-    none.textContent = '（当前电机定义）';
+    none.textContent = '(current motor definition)';
     $('preset').appendChild(none);
     presets.forEach((p, i) => {
       const o = document.createElement('option');
@@ -472,7 +472,7 @@
       try {
         raw = JSON.parse($('specText').value);
       } catch (err) {
-        showError('JSON 格式有误：' + err.message);
+        showError('Invalid JSON: ' + err.message);
         return;
       }
       rebuild(raw);
@@ -515,11 +515,11 @@
     });
   }
 
-  // 界面模块回调主程序用的接口
+  // Interface the UI modules call back into the main program
   const hooks = {
     saveTables,
     gesture() {
-      // 浏览器规定：必须在用户的点击或按键里才能创建 / 恢复音频；这里在任何一次点击、按键时尝试
+      // Browsers only allow audio to be created or resumed inside a user click or key press; try it on every click and key press
       if (S.soundOn && S.audio.mode === 'off') S.audio.start(query.get('worklet') === '0');
       else if (S.audio.ctx && S.audio.ctx.state === 'suspended') S.audio.ctx.resume();
     },
@@ -531,14 +531,14 @@
     },
     togglePause() {
       S.paused = !S.paused;
-      $('pause').textContent = S.paused ? '继续动画' : '暂停动画';
+      $('pause').textContent = S.paused ? 'Resume animation' : 'Pause animation';
     },
   };
 
-  // ---------------------------------------------------------------- 启动
+  // ---------------------------------------------------------------- Startup
   wire();
   if (phoneLayout.matches) {
-    S.labelsOn = false; // 小屏幕上标注会挤成一团，默认关掉，需要时在“显示”里打开
+    S.labelsOn = false; // on a small screen the labels crowd together, so they are off by default; turn them on in Display if needed
     $('optLabels').checked = false;
   }
   if (query.get('cut') === '0') {
@@ -548,7 +548,7 @@
   rebuild(K.defaultSpec(K.registry[query.get('type')] ? query.get('type') : 'induction'), -1);
   if (query.has('speed')) S.speed = clamp(Number(query.get('speed')) || 0, 0, MAX_SPEED);
   if (query.has('notch') && Drive.notchIndex(query.get('notch').toUpperCase()) >= 0) S.notch = Drive.notchIndex(query.get('notch').toUpperCase());
-  if (query.get('pedal') === 'power') S.notch = Drive.notchIndex('P4'); // 旧版网址参数，保留兼容
+  if (query.get('pedal') === 'power') S.notch = Drive.notchIndex('P4'); // old URL parameter, kept for compatibility
   if (query.get('pedal') === 'brake') S.notch = Drive.notchIndex('B3');
   if (query.get('demo') === '1') setDemo(true);
   S.slow = slowFactor(Number($('slow').value));
@@ -571,7 +571,7 @@
   }
   requestAnimationFrame(frame);
 
-  // 给控制台、测试和以后的数据回放预留的接口
+  // Interface reserved for the console, tests, and later data playback
   NS.App = {
     state: S,
     audio: S.audio,
