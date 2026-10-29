@@ -10,7 +10,6 @@
   const TAU = Math.PI * 2;
   const DEG = Math.PI / 180;
   const MAX_SPEED = 160; // km/h
-  const RPM_MAX = 6000; // full scale of the speed bar
   const TABLES_KEY = 'vvvf3d.tables.v1';
   const $ = (id) => document.getElementById(id);
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -72,6 +71,8 @@
     view: { cutaway: true, shellOpacity: 0.3, showField: true, showWinding: true, showRotorCurrent: true },
     spec: null,
     motor: null,
+    rpmMax: 6000, // full scale of the rotor-speed bar and of the blur colour, set by rebuild() from the drivetrain
+    motorRadius: 2.29, // bounding-sphere radius of the motor, set by rebuild(); the camera frames the motor by it
     rotor: 0, // visual angle of the rotor [rad]
     slipAngle: 0, // how many more (or fewer) turns the rotating field makes than the rotor, i.e. the slip [rad]
     streak: 0, // phase of the blur pattern [turns]
@@ -90,6 +91,7 @@
     return;
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.localClippingEnabled = true; // parts that turn are cut away with clipping planes (MotorKit.helpers.cutPlanes)
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(36, 1, 0.1, 100);
 
@@ -113,7 +115,9 @@
     camera.updateProjectionMatrix();
     const tanV = Math.tan((camera.fov * Math.PI) / 360);
     const tanH = tanV * camera.aspect;
-    const R = 1.7; // effective bounding-sphere radius of the motor (the true one is about 2.04; the silhouette from the default view is much narrower)
+    // effective radius of the motor's silhouette from the default view: 1.7 was tuned on the default induction motor, whose bounding
+    // sphere is 2.29 (the silhouette is much narrower than the sphere); other motors scale with their own bounding sphere
+    const R = (1.7 / 2.29) * S.motorRadius;
     const dV = (1.08 * R * Math.sqrt(1 + tanV * tanV)) / tanV;
     const dH = (1.08 * R * Math.sqrt(1 + tanH * tanH)) / tanH;
     orbit.fit = Math.max(0.85, Math.max(dV, dH) / orbit.home.dist);
@@ -243,6 +247,11 @@
       return { el, pos: l.pos };
     });
   }
+  // A round number just above the rotor speed at the top speed, so a geared motor (about 5500 rpm) and a direct drive (about 1000 rpm) both use the whole bar
+  function rpmFullScale(spec) {
+    const nr = Drive.compute(MAX_SPEED, 2, true, spec.drivetrain).nr; // the rotor speed depends only on the drivetrain
+    return [600, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 10000].find((c) => nr <= c) || Math.ceil(nr / 5000) * 5000;
+  }
   function rebuild(rawSpec, presetIndex) {
     let motor;
     try {
@@ -257,6 +266,10 @@
     }
     S.motor = motor;
     S.spec = motor.spec;
+    S.rpmMax = rpmFullScale(motor.spec);
+    $('rpmMax').textContent = S.rpmMax;
+    S.motorRadius = new T.Box3().setFromObject(motor.root, true).getBoundingSphere(new T.Sphere()).radius;
+    resize();
     scene.add(motor.root);
     showError('');
     syncSpecEditor();
@@ -372,7 +385,7 @@
     const amp = S.power;
     const currents = [Math.cos(psi) * amp, Math.cos(psi - TAU / 3) * amp, Math.cos(psi - (2 * TAU) / 3) * amp];
     S.streak = (S.streak + Math.min(vr, 1.6) * dt) % 1;
-    rpmColor(d.nr / RPM_MAX, speedColor);
+    rpmColor(d.nr / S.rpmMax, speedColor);
     m.update({
       rotorAngle: S.rotor,
       fieldAngle: field,
@@ -461,7 +474,13 @@
       $('preset').appendChild(o);
     });
 
-    const carryDrive = (spec) => Object.assign({}, spec, { drivetrain: S.spec ? S.spec.drivetrain : undefined });
+    // A drivetrain the user has edited is kept when the motor changes; an untouched one gives way to the new type's own default
+    // (the outer rotor is a direct drive with gear ratio 1, the others have the 5.6 gearbox)
+    const sameDrive = (a, b) => Object.keys(NS.Drive.DEFAULT_DRIVE).every((k) => a[k] === b[k]);
+    const carryDrive = (spec) => {
+      if (!S.spec || sameDrive(S.spec.drivetrain, K.normalizeSpec(K.defaultSpec(S.spec.type)).drivetrain)) return spec;
+      return Object.assign({}, spec, { drivetrain: S.spec.drivetrain });
+    };
     $('motorType').addEventListener('change', (e) => rebuild(carryDrive(K.defaultSpec(e.target.value))));
     $('preset').addEventListener('change', (e) => {
       const i = Number(e.target.value);

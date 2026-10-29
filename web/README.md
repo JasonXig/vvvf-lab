@@ -8,6 +8,8 @@ Push the master controller and the train speeds up, the rotor in the 3D motor sp
 
 ![Surface-mounted PM synchronous motor, brake notch B3: you can see at a glance which segment of the brake table the current speed falls in](../docs/web_desk_pmsm_brake.png)
 
+![Outer-rotor PM motor (direct drive), GTO-type table at 75 km/h: the stator with its slots facing out sits on a fixed spindle, and the magnet drum turns around it](../docs/web_desk_outer_rotor.png)
+
 ## Opening it
 
 **Live demo:** https://jasonxig.github.io/vvvf-lab/
@@ -22,11 +24,11 @@ URL parameters open the page in a given state:
 
 | Parameter | Meaning | Example |
 | --- | --- | --- |
-| `type` | Motor type: `induction`, `pmsm`, `ipmsm` | `?type=pmsm` |
+| `type` | Motor type: `induction`, `pmsm`, `ipmsm`, `outer-rotor` | `?type=outer-rotor` |
 | `speed` | Vehicle speed in km/h | `?speed=60` |
 | `notch` | Controller notch: `B5`…`B1`, `N`, `H`, `P1`…`P4` | `?notch=P3` |
 | `map` | Replace both the power and brake tables with a preset: `reference`, `gto`, `igbt`, `scale` | `?map=igbt` |
-| `cut` | `0` means do not cut away the housing | `?cut=0` |
+| `cut` | `0` means no cut-away (housing, or the drum of an outer rotor) | `?cut=0` |
 | `demo` | `1` starts the automatic demo | `?demo=1` |
 | `coach` | `0` hides the first-run tips | `?coach=0` |
 | `worklet` | `0` skips AudioWorklet and forces the fallback (for testing) | `?worklet=0` |
@@ -102,7 +104,7 @@ The segment lit up in a lane is the one the inverter is using right now; the bri
 
 ### Readouts, inverter, sound
 
-- **Speed** and the bar below it (the colour is the same set as the blur on the rotor in 3D: blue → cyan → green → yellow → red).
+- **Speed** and the rotor-speed bar below it (the colour is the same set as the blur on the rotor in 3D: blue → cyan → green → yellow → red). Its full scale follows the drivetrain: 6000 rpm with the 5.6 gearbox, 1000 rpm for the direct-drive outer rotor.
 - **Status**: Power / Neutral / Hold / Brake / Stopped, and the current modulation; when the inverter is not running it says why (inverter off, regenerative brake released, inverter standby). Six readouts: fundamental frequency f₁, carrier, voltage V₁ (a square wave is 100%), synchronous speed, rotor speed, slip ratio.
 - **Inverter lamp**: off means no tractive effort and no regenerative braking: power and hold can only coast, and braking is mechanical only (no sound, and the field disappears too). Regenerative braking is released below 1 Hz of fundamental frequency and handed over to mechanical braking.
 - **Speaker** and volume bar affect only the sound, not the train. `M` mutes.
@@ -153,9 +155,10 @@ mode table ─→ operating point (modulation kind, fundamental f1, modulation i
 ## What everything in the 3D view is
 
 - **Stator core:** the slotted laminations. **The coloured bars in the slots** are the conductors of the three-phase winding, yellow, green and red for phases A, B and C. Their brightness shows the current direction at this instant (bright = out, dark = in); the bright region travelling around the circle is the rotating field.
-- **Air-gap field:** the orange and blue ring on the rotor surface, orange = flux outward, blue = inward, turning with the rotating field. It disappears when the inverter is stopped; in neutral only the magnetizing field remains, weaker than under power.
-- **Rotor:** an induction motor is iron core + copper bars + end rings, the bar colour shows the induced current and is brighter with more slip (in neutral the slip is zero, so the bars are dark); a permanent-magnet motor has alternating N / S magnets. When braking the rotating field is one slip slower than the rotor (induction) or lags by a load angle (PM).
-- **The light marker on the shaft end:** for judging direction and speed.
+- **Air-gap field:** the orange and blue ring in the air gap, orange = flux crossing from the rotor into the stator (the rotor N-pole side), blue = from the stator into the rotor, turning with the rotating field. For an inner rotor that is outward / inward; for an outer rotor it is the other way round. It disappears when the inverter is stopped; in neutral only the magnetizing field remains, weaker than under power.
+- **Rotor:** an induction motor is iron core + copper bars + end rings, the bar colour shows the induced current and is brighter with more slip (in neutral the slip is zero, so the bars are dark); a permanent-magnet motor has alternating N / S magnets, coloured by the pole that faces the air gap. When braking the rotating field is one slip slower than the rotor (induction) or lags by a load angle (PM).
+- **Outer rotor:** turned inside out. The stator sits in the middle on a **fixed spindle** (the support with round lightening holes carries it) with its slots facing outwards, and the rotor is a **drum** turning around it with the magnets on its inside. The drum is the outer shell, so the cut-away notch goes through the drum (it stays still while the drum turns through it, and the magnets appear and disappear at its edges), and the "Outer shell" opacity in Display applies to the drum. Machines like this are found in hub motors, fans and direct drives: the large air-gap diameter gives a lot of torque at low speed, so the default here is a **direct drive** (gear ratio 1) with 16 poles. The many poles make up for the slow rotor: the fundamental frequency at 130 km/h is about 107 Hz, the same order as the geared induction motor (about 150 Hz). This is a demo configuration, not a particular train.
+- **The light marker on the shaft end** (on an outer rotor: on the front rim of the drum and on the hub at the back): for judging direction and speed.
 
 ## How the speed is shown
 
@@ -177,9 +180,13 @@ The "Motor definition" in the Motor drawer can be edited directly; press "Apply"
 | `rotorBars` | Number of rotor bars (`induction`) | 8–80 |
 | `magnetCoverage`, `magnetThickness`, `loadAngleDeg` | Magnet coverage, thickness, load angle (`pmsm`) | See the error message |
 | `magnetWidth`, `magnetThickness`, `vAngleDeg`, `loadAngleDeg` | Magnet width, thickness, V angle, load angle (`ipmsm`) | See the error message |
-| `drivetrain` | `wheelDiameter`, `gearRatio`, and the slip-frequency curve `slipLow`, `slipHigh`, `slipRiseFrom`, `slipRiseTo` (values at full torque, scaled down with the notch) | Defaults 0.86 m, 5.6 |
+| `outerRadius`, `statorRadius`, `statorInnerRadius`, `shaftRadius` | `outer-rotor` only, instead of `boreRadius`: outer radius of the drum, stator outer radius (tooth tips), stator inner radius (where it sits on the support), radius of the fixed spindle. From the axis outwards: spindle < support < stator < air gap < magnets < drum | See the error message |
+| `magnetCoverage`, `magnetThickness`, `loadAngleDeg` | Magnet coverage, thickness, load angle (`outer-rotor`, magnets on the inside of the drum) | See the error message |
+| `drivetrain` | `wheelDiameter`, `gearRatio`, and the slip-frequency curve `slipLow`, `slipHigh`, `slipRiseFrom`, `slipRiseTo` (values at full torque, scaled down with the notch) | Defaults 0.86 m, 5.6 (`outer-rotor`: gear ratio 1, direct drive) |
 
 Changing the number of poles also changes the fundamental frequency at the same speed, so the modulation and the sound change with it (more poles need a higher frequency for the same speed, and the pitch moves up overall); the carrier curves on the ruler are recomputed too.
+
+When you switch to another motor type, a drivetrain you have edited is kept; one you have not touched is replaced by the new type's own default (so the outer rotor comes with its direct drive and the others with the gearbox).
 
 ## Adding a motor type
 
@@ -226,7 +233,30 @@ The `state` passed to `update` every frame:
 | `slipAmp` | 0–1, size of the slip (used for the induced rotor current of an induction motor) |
 | `blur`, `speedColor` | Amount and colour of the speed blur |
 
-To replace the whole structure (outer rotor, axial flux, linear motor), add `parts: { stator, windings, housing, shaft, field }` to `register` to override the corresponding shared parts; write them like the default implementations, and call `MotorKit.parts.xxx(ctx)` to reuse them.
+### Changing the topology: layouts and parts
+
+A motor whose stator, air gap and rotor sit somewhere else (outer rotor, axial flux, linear motor) needs two more things in `register`. [js/motors/outer-rotor.js](js/motors/outer-rotor.js) is the complete example.
+
+- **`layout: { defaults, validate(spec, need, num), derive(spec) }`** replaces the dimensions of the classic inner rotor. `defaults` are the dimensions shown in the JSON editor (`boreRadius` and friends disappear, `statorRadius` and friends appear), `validate` checks that they fit together, and `derive` returns the geometry `g` that the parts read. The shared windings and field ring only need `g.Z`, `g.p`, `g.delta`, `g.L`, `g.slotDepth`, `g.rMid` (radius of the slot conductors) and `g.gapR` (middle of the air gap), so they work on either side of the gap.
+- **`parts: { stator, windings, housing, shaft, field, blur }`** overrides the shared parts. Each one can still call the shared implementation, e.g. the outer rotor keeps its stator whole by passing a full slot range:
+
+```js
+const whole = (g) => ({ full: true, k0: 0, k1: g.Z, a0: 0, a1: TAU });
+parts: {
+  // the slotted stack with the teeth on the outside: tooth tips, slot bottoms, plain inner edge
+  stator: (ctx) => new T.Mesh(H.slottedCore(ctx, ctx.g.Rso, ctx.g.Rs, ctx.g.Rsi, whole(ctx.g)), H.stdMat(P.steel, 0.55, 0.42)),
+  windings: (ctx) => K.parts.windings(Object.assign({}, ctx, { kept: whole(ctx.g) })),
+  blur: (ctx) => K.parts.blur(ctx, { radius: ctx.g.Ro + 0.012 }),  // radius, half, a0, a1
+  // housing (does not turn), shaft (turns with the rotor), field ...
+},
+labels(ctx, { winding, field }) { return [/* labels of the shared parts, placed for this layout */]; },
+```
+
+- **Cutting away a part that turns:** the stator and housing are still, so the notch is simply left out of their geometry (`ctx.kept`). An outer-rotor drum turns, and a notch in its geometry would turn with it, so its materials get clipping planes that stay fixed in space: `H.clip(material, H.cutPlanes(ctx.view))`.
+- **A rotor that is the outer shell** returns `setOpacity(o)` from `buildRotor`; it is called with the "Outer shell" opacity from Display.
+- The camera frames every motor by its bounding sphere, so a smaller or larger motor still fills the view.
+
+`tests/test_web_motors.py` builds every registered type and preset in Node with the cut-away on and off, so a new type is tested as soon as its `<script>` line is in `index.html`.
 
 ## Code structure
 
@@ -236,7 +266,7 @@ To replace the whole structure (outer rotor, axial flux, linear motor), add `par
 | `js/drive.js` | Drivetrain and slip, longitudinal train dynamics, controller notches, the rule for when the inverter is running |
 | `js/table.js` | Mode tables split by speed: lookup, V/f curve, overmodulation conversion, calibration of synchronous modulation with few pulses, validation, presets, scales and scale steps |
 | `js/synth.js` | The sound-synthesis core (self-contained, runs in an AudioWorklet and in Node) and the audio engine |
-| `js/motorkit.js`, `js/motors/` | Shared parts of the 3D motor, the type registry, the rotors |
+| `js/motorkit.js`, `js/motors/` | Shared parts of the 3D motor, the inner-rotor layout, the type registry; one file per motor type (`induction`, `pmsm`, `ipmsm`, `outer-rotor`) |
 | `js/scopes.js` | Spectrogram, switching waveform, level bar |
 | `js/ruler.js` | The mode ruler: drawing, drag-to-jump, boundary dragging, editor, lane menus, scale steps |
 | `js/ui.js` | Cab deck: master controller, readouts, inverter and sound, keyboard, drawer, first-run tips |
@@ -250,6 +280,7 @@ The logic layer and the sound-synthesis core do not depend on a browser, so they
 
 - `tests/test_web_logic.py`: mode tables, drivetrain, train dynamics, overmodulation conversion, all cross-checked against the Python version and independent formulas; the notch table, slip proportional to torque, acceleration of each notch, **the inverter keeps running in neutral and hold (so the sound continues)**, no traction or sound with the inverter off; the calibration of few-pulse synchronous modulation is verified with an independent numpy numerical integration; pulse counts must be odd; note names and frequencies, scales, and **scale steps** (8 steps over the first 15 km/h, the carrier curve outside the replaced range must not change, across several segments, up to the top speed, and the messages for unreasonable input).
 - `tests/test_web_synth.py`: the strongest lines of the JS synthesis against the Python `DriveSynth` one by one (within 4%); asynchronous sidebands, synchronous sidebands, three-phase balance (N not a multiple of 3), whether the fundamental is subtracted cleanly in wide 3-pulse; whether it is fast enough for real time.
+- `tests/test_web_motors.py`: builds every 3D motor type and preset in Node with the real three.js (geometry needs no WebGL), with the cut-away on and off: finite geometry of the expected size, labels in place, a few frames of `update()`; inner-rotor types are cut in their geometry and the outer rotor with clipping planes on exactly its turning parts; definitions that do not fit together are refused with a clear message.
 
 The UI itself was checked with headless Edge (`file://`, sending real mouse, keyboard and touch events over the DevTools protocol) and the in-app browser: controller clicks and dragging, keyboard, spectral lines in the spectrogram persisting in neutral, ruler drag-to-jump / selecting a segment / changing modulation and pulse count / dragging boundaries / split and delete / listen / lane menus, drawer, demo, inverter switch, phone touch, AudioWorklet loading (including `file://`), the `?worklet=0` fallback, and the layouts at 1400×860, 1280×720, 1024×640, tablet and phone portrait. **Not verified:** frame rate on a real GPU, a real phone, and what actually comes out of the speakers.
 

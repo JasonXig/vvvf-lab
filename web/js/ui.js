@@ -259,7 +259,7 @@
       $('demo').classList.toggle('on', S.demo);
       $('demo').textContent = S.demo ? 'Stop demo' : 'Demo';
     }
-    const pct = clamp(f.nr / 6000, 0, 1) * 100;
+    const pct = clamp(f.nr / S.rpmMax, 0, 1) * 100;
     if (Math.abs(pct - last.rpm) > 0.3) {
       last.rpm = pct;
       $('rpmFill').style.clipPath = 'inset(0 ' + (100 - pct).toFixed(1) + '% 0 0)';

@@ -496,7 +496,7 @@
       <div class="cap"><span>Speed</span></div>
       <div class="spd"><b id="spdNum">0</b><i>km/h</i></div>
       <div class="rpmbar" title="Rotor speed (the colour matches the blur colour of the rotor in 3D)"><i id="rpmFill"></i></div>
-      <div class="rpmcap"><span>0</span><span>Rotor speed rpm</span><span>6000</span></div>
+      <div class="rpmcap"><span>0</span><span>Rotor speed rpm</span><span id="rpmMax">6000</span></div>
     </div>
 
     <div class="blk stats">
@@ -564,15 +564,15 @@
       <div class="row" id="slowRow" hidden><input id="slow" type="range" min="0" max="100" step="1" value="45"><output id="slowOut"></output></div>
       <p class="note" id="rotNote"></p>
       <h2>Scene</h2>
-      <label class="line"><input type="checkbox" id="optCut" checked> Cut-away housing</label>
+      <label class="line"><input type="checkbox" id="optCut" checked> Cut-away view</label>
       <label class="line"><input type="checkbox" id="optField" checked> Air-gap rotating field</label>
       <label class="line"><input type="checkbox" id="optWinding" checked> Three-phase windings</label>
       <label class="line"><input type="checkbox" id="optRotCur" checked> Rotor induced current (induction)</label>
       <label class="line"><input type="checkbox" id="optLabels" checked> Part labels</label>
-      <div class="row"><span style="min-width:64px;color:var(--muted)">Housing opacity</span><input id="shell" type="range" min="0.05" max="1" step="0.05" value="0.3"><output id="shellOut">30%</output></div>
+      <div class="row"><span style="min-width:64px;color:var(--muted)" title="The housing, or the drum of an outer rotor">Outer shell</span><input id="shell" type="range" min="0.05" max="1" step="0.05" value="0.3"><output id="shellOut">30%</output></div>
       <div class="actions"><button class="btn" id="resetView">Reset view</button><button class="btn" id="pause">Pause animation</button></div>
       <h2>Legend</h2>
-      <p class="note"><span style="color:var(--phA)">■</span> Phase A (yellow) <span style="color:var(--phB)">■</span> Phase B (green) <span style="color:var(--phC)">■</span> Phase C (red); air-gap flux <span style="color:#ff8a3d">■</span> outward, <span style="color:#3d8bff">■</span> inward. Brightness of the conductors in the slots: bright = current out, dark = current in; the bright region travelling around the circle is the rotating field.</p>
+      <p class="note"><span style="color:var(--phA)">■</span> Phase A (yellow) <span style="color:var(--phB)">■</span> Phase B (green) <span style="color:var(--phC)">■</span> Phase C (red); air-gap flux <span style="color:#ff8a3d">■</span> from rotor into stator (rotor N pole), <span style="color:#3d8bff">■</span> from stator into rotor; magnets are coloured by the pole facing the air gap. Brightness of the conductors in the slots: bright = current out, dark = current in; the bright region travelling around the circle is the rotating field.</p>
     </section>
   </div>
 </aside>
@@ -586,6 +586,7 @@
 <script src="js/motors/induction.js"></script>
 <script src="js/motors/pmsm.js"></script>
 <script src="js/motors/ipmsm.js"></script>
+<script src="js/motors/outer-rotor.js"></script>
 <script src="js/scopes.js"></script>
 <script src="js/ruler.js"></script>
 <script src="js/ui.js"></script>

@@ -1,5 +1,6 @@
 // Motor kit: shared parts (stator, windings, housing, shaft, air-gap field, speed-blur shell) and the "motor type registry".
 // A new motor type only has to implement the rotor: write one file in js/motors/ and call MotorKit.register(...).
+// A type with another topology also brings its own layout and overrides some parts (js/motors/outer-rotor.js is the example).
 // Coordinate convention: the motor axis is Z; seen from the +Z end, counter-clockwise is the positive direction of rotation.
 (function (NS) {
   'use strict';
@@ -10,8 +11,8 @@
 
   const PALETTE = {
     phase: [0xf2c230, 0x3dbb6a, 0xe5484d], // A yellow, B green, C red (phase colours)
-    north: 0xff8a3d, // air-gap flux pointing outwards (the rotor N-pole side)
-    south: 0x3d8bff, // air-gap flux pointing inwards
+    north: 0xff8a3d, // air-gap flux crossing from the rotor into the stator (the rotor N-pole side)
+    south: 0x3d8bff, // air-gap flux crossing from the stator into the rotor
     steel: 0x9aa5b4,
     steelDark: 0x5d6877,
     housing: 0x7c93b0,
@@ -80,48 +81,61 @@
     need(typeof v === 'number' && isFinite(v) && v >= lo && v <= hi, label + ' ' + key + ' must be a number between ' + lo + ' and ' + hi);
   }
 
+  // ---- Layouts: the topology of the machine (where the stator, the air gap and the rotor sit) --------------
+  // A layout supplies the default dimensions, their checks, and the derived geometry g that the parts read.
+  // The default is the classic inner rotor (radial flux, rotor inside the stator bore); a motor type with another
+  // topology passes its own layout to register() (see js/motors/outer-rotor.js).
+  const INNER_LAYOUT = {
+    defaults: COMMON_DEFAULTS,
+    validate(s, need, num) {
+      num(s, 'length', 0.4, 3, 'Core length');
+      num(s, 'outerRadius', 0.5, 2, 'Stator outer radius');
+      num(s, 'boreRadius', 0.2, 1.5, 'Bore radius');
+      num(s, 'slotDepth', 0.05, 0.6, 'Slot depth');
+      num(s, 'airGap', 0.005, 0.1, 'Air gap');
+      num(s, 'shaftRadius', 0.05, 0.6, 'Shaft radius');
+      num(s, 'toothFraction', 0.3, 0.8, 'Tooth fraction');
+      need(s.boreRadius + s.slotDepth < s.outerRadius - 0.05, 'The slot-bottom radius (boreRadius + slotDepth) must be at least 0.05 below outerRadius');
+      need(s.shaftRadius < s.boreRadius - s.airGap - 0.12, 'shaftRadius is too large, the rotor will not fit');
+    },
+    derive(s) {
+      const g = {
+        L: s.length,
+        Ro: s.outerRadius,
+        Ri: s.boreRadius,
+        Rs: s.boreRadius + s.slotDepth,
+        Rr: s.boreRadius - s.airGap,
+        Rsh: s.shaftRadius,
+        p: s.poles / 2,
+        Z: s.statorSlots,
+        slotDepth: s.slotDepth,
+      };
+      g.delta = TAU / g.Z;
+      g.endZ = g.L / 2 + 0.42; // end-cap position
+      g.Rframe = g.Ro + 0.07;
+      g.hubR = g.Rsh + 0.16;
+      g.rMid = g.Ri + s.slotDepth * 0.55; // centre radius of the conductors in the slots
+      g.gapR = (g.Ri + g.Rr) / 2; // middle of the air gap, where the field ring is drawn
+      return g;
+    },
+  };
+  const layoutOf = (def) => def.layout || INNER_LAYOUT;
+
   function normalizeSpec(input) {
     need(input && typeof input === 'object' && !Array.isArray(input), 'The motor definition must be a JSON object');
     const def = registry[input.type];
     need(def, 'Unknown motor type: ' + input.type + '; available: ' + Object.keys(registry).join(', '));
-    const s = Object.assign({}, COMMON_DEFAULTS, def.defaults, input);
-    s.drivetrain = Object.assign({}, NS.Drive.DEFAULT_DRIVE, input.drivetrain || {});
+    const layout = layoutOf(def);
+    const s = Object.assign({}, layout.defaults, def.defaults, input);
+    s.drivetrain = Object.assign({}, NS.Drive.DEFAULT_DRIVE, (def.defaults || {}).drivetrain, input.drivetrain || {});
     need(Number.isInteger(s.poles) && s.poles >= 2 && s.poles <= 16 && s.poles % 2 === 0, 'poles must be an even number from 2 to 16');
     need(
       Number.isInteger(s.statorSlots) && s.statorSlots >= 3 * s.poles && s.statorSlots <= 96,
       'statorSlots must be an integer, at least 3×poles and at most 96'
     );
-    num(s, 'length', 0.4, 3, 'Core length');
-    num(s, 'outerRadius', 0.5, 2, 'Stator outer radius');
-    num(s, 'boreRadius', 0.2, 1.5, 'Bore radius');
-    num(s, 'slotDepth', 0.05, 0.6, 'Slot depth');
-    num(s, 'airGap', 0.005, 0.1, 'Air gap');
-    num(s, 'shaftRadius', 0.05, 0.6, 'Shaft radius');
-    num(s, 'toothFraction', 0.3, 0.8, 'Tooth fraction');
-    need(s.boreRadius + s.slotDepth < s.outerRadius - 0.05, 'The slot-bottom radius (boreRadius + slotDepth) must be at least 0.05 below outerRadius');
-    need(s.shaftRadius < s.boreRadius - s.airGap - 0.12, 'shaftRadius is too large, the rotor will not fit');
+    layout.validate(s, need, num);
     if (def.validate) def.validate(s, need, num);
     return s;
-  }
-
-  function derive(s) {
-    const g = {
-      L: s.length,
-      Ro: s.outerRadius,
-      Ri: s.boreRadius,
-      Rs: s.boreRadius + s.slotDepth,
-      Rr: s.boreRadius - s.airGap,
-      Rsh: s.shaftRadius,
-      p: s.poles / 2,
-      Z: s.statorSlots,
-      slotDepth: s.slotDepth,
-    };
-    g.delta = TAU / g.Z;
-    g.endZ = g.L / 2 + 0.42; // end-cap position
-    g.Rframe = g.Ro + 0.07;
-    g.hubR = g.Rsh + 0.16;
-    g.rMid = g.Ri + s.slotDepth * 0.55; // centre radius of the conductors in the slots
-    return g;
   }
 
   // Range of slots kept after cutting [k0, k1) (the boundaries fall on tooth centres, so the cut is clean)
@@ -180,6 +194,63 @@
       tex.colorSpace = T.SRGBColorSpace;
       return tex;
     },
+    // Slotted lamination stack: one edge carries the teeth (tooth tips at tipR, slot bottoms at bottomR), the other edge is a plain circle at plainR.
+    // Inner rotor: teeth on the inside (tipR < bottomR < plainR); outer rotor: teeth on the outside (plainR < bottomR < tipR).
+    // kept is the range of slots to build (see keptRange); its boundaries fall on tooth centres, so the cut is clean.
+    slottedCore(ctx, tipR, bottomR, plainR, kept) {
+      const { spec, g } = ctx;
+      const half = ((1 - spec.toothFraction) * g.delta) / 2; // half angular width of a slot
+      const P = (r, a) => new T.Vector2(r * Math.cos(a), r * Math.sin(a));
+      const arc = (r, a0, a1, n, skipFirst) => {
+        const out = [];
+        for (let i = skipFirst ? 1 : 0; i <= n; i++) out.push(P(r, a0 + ((a1 - a0) * i) / n));
+        return out;
+      };
+      // Toothed edge: starting from a tooth centre, through tooth tip, slot wall, slot bottom, slot wall, tooth tip...
+      const edge = [];
+      for (let k = kept.k0; k < kept.k1; k++) {
+        const c = (k + 0.5) * g.delta;
+        const s0 = c - half;
+        const s1 = c + half;
+        edge.push(...arc(tipR, k * g.delta, s0, 2, k > kept.k0));
+        edge.push(...arc(bottomR, s0, s1, 3, false));
+        edge.push(...arc(tipR, s1, (k + 1) * g.delta, 2, false));
+      }
+      const shape = new T.Shape();
+      if (kept.full && plainR > tipR) {
+        shape.absarc(0, 0, plainR, 0, TAU, false);
+        shape.holes.push(new T.Path(edge));
+      } else if (kept.full) {
+        shape.setFromPoints(edge);
+        const hole = new T.Path();
+        hole.absarc(0, 0, plainR, 0, TAU, true);
+        shape.holes.push(hole);
+      } else {
+        shape.setFromPoints(edge);
+        shape.lineTo(plainR * Math.cos(kept.a1), plainR * Math.sin(kept.a1));
+        shape.absarc(0, 0, plainR, kept.a1, kept.a0, true);
+        shape.closePath();
+      }
+      return helpers.extrude(shape, g.L, 48);
+    },
+    // Clipping planes that remove the cut-away notch in world space. A part that turns (an outer-rotor drum) cannot have the notch in its
+    // geometry, because the notch would turn with it; give its materials these planes instead: material.clippingPlanes = planes,
+    // material.clipIntersection = true (only points inside both half-spaces, i.e. inside the wedge, are removed; needs cutHalfWidthDeg < 90).
+    // Returns null when the view is not cut away. The renderer has localClippingEnabled on.
+    cutPlanes(view) {
+      if (!view.cutaway) return null;
+      const b1 = (view.cutCenterDeg - view.cutHalfWidthDeg) * DEG;
+      const b2 = (view.cutCenterDeg + view.cutHalfWidthDeg) * DEG;
+      return [new T.Plane(new T.Vector3(Math.sin(b1), -Math.cos(b1), 0), 0), new T.Plane(new T.Vector3(-Math.sin(b2), Math.cos(b2), 0), 0)];
+    },
+    // Apply cutPlanes(view) to a material (no-op when planes is null); returns the material
+    clip(mat, planes) {
+      if (planes) {
+        mat.clippingPlanes = planes;
+        mat.clipIntersection = true;
+      }
+      return mat;
+    },
   };
 
   function disposeObject(root) {
@@ -192,39 +263,6 @@
       });
       if (o.isInstancedMesh) o.dispose();
     });
-  }
-
-  // ---- Stator core (with slots) -------------------------------------------------------
-  function statorGeometry(ctx) {
-    const { spec, g, kept } = ctx;
-    const half = ((1 - spec.toothFraction) * g.delta) / 2; // half angular width of a slot
-    const P = (r, a) => new T.Vector2(r * Math.cos(a), r * Math.sin(a));
-    const arc = (r, a0, a1, n, skipFirst) => {
-      const out = [];
-      for (let i = skipFirst ? 1 : 0; i <= n; i++) out.push(P(r, a0 + ((a1 - a0) * i) / n));
-      return out;
-    };
-    // Inner contour: starting from a tooth centre, through tooth tip, slot wall, slot bottom, slot wall, tooth tip...
-    const inner = [];
-    for (let k = kept.k0; k < kept.k1; k++) {
-      const c = (k + 0.5) * g.delta;
-      const s0 = c - half;
-      const s1 = c + half;
-      inner.push(...arc(g.Ri, k * g.delta, s0, 2, k > kept.k0));
-      inner.push(...arc(g.Rs, s0, s1, 3, false));
-      inner.push(...arc(g.Ri, s1, (k + 1) * g.delta, 2, false));
-    }
-    const shape = new T.Shape();
-    if (kept.full) {
-      shape.absarc(0, 0, g.Ro, 0, TAU, false);
-      shape.holes.push(new T.Path(inner));
-    } else {
-      shape.setFromPoints(inner);
-      shape.lineTo(g.Ro * Math.cos(kept.a1), g.Ro * Math.sin(kept.a1));
-      shape.absarc(0, 0, g.Ro, kept.a1, kept.a0, true);
-      shape.closePath();
-    }
-    return helpers.extrude(shape, g.L, 48);
   }
 
   // ---- Three-phase windings: in-slot conductors (instanced bars) + end connections ----------------
@@ -386,7 +424,7 @@
 
   function buildField(ctx) {
     const { g, view } = ctx;
-    const rg = (g.Ri + g.Rr) / 2;
+    const rg = g.gapR;
     const half = g.L * 0.48;
     const mat = new T.ShaderMaterial({
       uniforms: {
@@ -435,10 +473,15 @@
     '}',
   ].join('\n');
 
-  function buildBlur(ctx) {
+  // opt: { radius, half, a0, a1 } (default: just outside the inner rotor, full circle). The shell does not turn, so an outer rotor
+  // that is cut away passes the kept angles a0..a1 (counter-clockwise) and gets a shell with the notch left open.
+  function buildBlur(ctx, opt) {
     const { g } = ctx;
-    const half = g.L * 0.49;
-    const r = g.Rr + 0.012;
+    const o = opt || {};
+    const half = o.half || g.L * 0.49;
+    const r = o.radius || g.Rr + 0.012;
+    const a0 = o.a0 === undefined ? 0 : o.a0;
+    const a1 = o.a1 === undefined ? TAU : o.a1;
     const mat = new T.ShaderMaterial({
       uniforms: {
         uBlur: { value: 0 },
@@ -453,7 +496,9 @@
       side: T.DoubleSide,
       blending: T.AdditiveBlending,
     });
-    const mesh = new T.Mesh(new T.CylinderGeometry(r, r, 2 * half, 128, 1, true).rotateX(Math.PI / 2), mat);
+    // CylinderGeometry measures its angle θ from +Z towards +X; after rotateX(π/2) a vertex at θ sits at angle θ − π/2 in the XY plane
+    const geo = new T.CylinderGeometry(r, r, 2 * half, 128, 1, true, a0 + Math.PI / 2, a1 - a0).rotateX(Math.PI / 2);
+    const mesh = new T.Mesh(geo, mat);
     mesh.renderOrder = 7;
     return {
       mesh,
@@ -471,22 +516,38 @@
   // and linear motors need their own stator; when overriding you can call MotorKit.parts.xxx(ctx) to reuse the default implementation.
   //   stator(ctx)   → THREE.Object3D
   //   windings(ctx) → { group, anchor, update(state) }
-  //   housing(ctx)  → { group, setOpacity(o) }
+  //   housing(ctx)  → { group, setOpacity(o) } (does not turn)
   //   shaft(ctx)    → THREE.Object3D (turns together with the rotor)
-  //   field(ctx)    → { mesh, anchor, update(state) }
+  //   field(ctx)    → { mesh, anchor, label?, update(state) }
+  //   blur(ctx)     → { mesh, update(state) } (does not turn)
   const DEFAULT_PARTS = {
-    stator: (ctx) => new T.Mesh(statorGeometry(ctx), helpers.stdMat(PALETTE.steel, 0.55, 0.42)),
+    stator: (ctx) => new T.Mesh(helpers.slottedCore(ctx, ctx.g.Ri, ctx.g.Rs, ctx.g.Ro, ctx.kept), helpers.stdMat(PALETTE.steel, 0.55, 0.42)),
     windings: buildWindings,
     housing: buildHousing,
     shaft: buildShaft,
     field: buildField,
+    blur: buildBlur,
   };
+
+  // Labels of the shared parts: { text, pos } with positions in the motor local coordinates. A motor type with another
+  // layout replaces this with labels(ctx, { winding, field }) at register time; the rotor's own labels are added after it.
+  function defaultLabels(ctx, built) {
+    const { g, kept } = ctx;
+    const a = kept.full ? 0.9 : kept.a0 + 0.04; // along the top edge of the cut, above the motor from the default view
+    const labels = [
+      { text: 'Stator core (slotted)', pos: new T.Vector3(((g.Rs + g.Ro) / 2) * Math.cos(a), ((g.Rs + g.Ro) / 2) * Math.sin(a), g.L * 0.3) },
+      { text: built.field.label || 'Air-gap field (orange / blue = flux direction)', pos: built.field.anchor },
+      { text: 'Shaft', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.55) },
+    ];
+    if (built.winding.anchor) labels.splice(1, 0, { text: 'Three-phase winding (slot conductors + end turns)', pos: built.winding.anchor });
+    return labels;
+  }
 
   function build(rawSpec, rawView) {
     const spec = normalizeSpec(rawSpec);
     const view = Object.assign({}, VIEW_DEFAULTS, rawView || {});
     const def = registry[spec.type];
-    const g = derive(spec);
+    const g = layoutOf(def).derive(spec);
     const kept = keptRange(g, view);
     const ctx = { T, spec, g, view, kept, palette: PALETTE, helpers, TAU };
     const parts = Object.assign({}, DEFAULT_PARTS, def.parts || {});
@@ -505,19 +566,18 @@
 
     const field = parts.field(ctx);
     root.add(field.mesh);
-    const blur = buildBlur(ctx);
+    const blur = parts.blur(ctx);
     root.add(blur.mesh);
     const housing = parts.housing(ctx);
     root.add(housing.group);
+    // A rotor that is itself the outer shell (outer rotor) follows the shell-opacity slider too
+    const setOpacity = (o) => {
+      housing.setOpacity(o);
+      if (rotorImpl.setOpacity) rotorImpl.setOpacity(o);
+    };
+    if (rotorImpl.setOpacity) rotorImpl.setOpacity(view.shellOpacity);
 
-    // Labels: { text, pos } with positions in the motor local coordinates
-    const a = kept.full ? 0.9 : kept.a0 + 0.04; // along the top edge of the cut, above the motor from the default view
-    const labels = [
-      { text: 'Stator core (slotted)', pos: new T.Vector3(((g.Rs + g.Ro) / 2) * Math.cos(a), ((g.Rs + g.Ro) / 2) * Math.sin(a), g.L * 0.3) },
-      { text: 'Air-gap field (orange / blue = flux direction)', pos: field.anchor },
-      { text: 'Shaft', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.55) },
-    ];
-    if (winding.anchor) labels.splice(1, 0, { text: 'Three-phase winding (slot conductors + end turns)', pos: winding.anchor });
+    const labels = (def.labels || defaultLabels)(ctx, { winding, field });
     (rotorImpl.labels || []).forEach((l) => labels.push(l));
 
     const fadeMats = rotorImpl.fadeMats || [];
@@ -546,7 +606,7 @@
       },
       setView(v) {
         Object.assign(view, v);
-        housing.setOpacity(view.shellOpacity);
+        setOpacity(view.shellOpacity);
       },
       dispose() {
         disposeObject(root);
@@ -561,6 +621,8 @@
     defaultSpec,
     normalizeSpec,
     build,
+    keptRange,
+    layouts: { inner: INNER_LAYOUT },
     parts: DEFAULT_PARTS,
     palette: PALETTE,
     helpers,
