@@ -62,6 +62,7 @@
     demoPhase: 'accel',
     demoT: 0,
     paused: false,
+    explode: false, // the exploded view is open: the simulation is frozen (js/explode.js)
     audio: new NS.AudioEngine(),
     waveFrame: { run: false },
     // display
@@ -120,7 +121,7 @@
     const R = (1.7 / 2.29) * S.motorRadius;
     const dV = (1.08 * R * Math.sqrt(1 + tanV * tanV)) / tanV;
     const dH = (1.08 * R * Math.sqrt(1 + tanH * tanH)) / tanH;
-    orbit.fit = Math.max(0.85, Math.max(dV, dH) / orbit.home.dist);
+    orbit.fit = S.explode ? NS.Explode.fitDistance(camera) / orbit.home.dist : Math.max(0.85, Math.max(dV, dH) / orbit.home.dist);
   }
   // The height of the cab deck sets the height of the stage (on narrow screens the stylesheet fixes it at 60% of the screen)
   const phoneLayout = window.matchMedia('(max-width: 760px)');
@@ -137,10 +138,14 @@
     constructor(cam, dom) {
       this.cam = cam;
       this.dom = dom;
-      this.target = new T.Vector3(0, 0, 0);
-      this.home = { az: 0.78, pol: 1.12, dist: 6.4 };
-      Object.assign(this, this.home);
+      this.home = { az: 0.78, pol: 1.12, dist: 6.4, target: new T.Vector3(0, 0, 0) };
+      this.az = this.home.az;
+      this.pol = this.home.pol;
+      this.dist = this.home.dist;
+      this.target = this.home.target.clone();
       this.fit = 1; // extra pull-back factor when the stage shape is unsuitable, set by resize()
+      this.anim = null; // a camera move in progress (animateTo)
+      this.intercept = null; // (pointerdown event) → true when someone else takes this pointer (the exploded view grabbing a piece)
       this.pointers = new Map();
       this.pinch = 0;
       dom.addEventListener('pointerdown', (e) => this.down(e));
@@ -152,15 +157,28 @@
         'wheel',
         (e) => {
           e.preventDefault();
+          this.anim = null;
           this.dist = clamp(this.dist * Math.exp(e.deltaY * 0.001), 2.5, 14);
         },
         { passive: false }
       );
     }
     reset() {
-      Object.assign(this, this.home);
+      this.animateTo(this.home, 0.45);
+    }
+    view() {
+      return { az: this.az, pol: this.pol, dist: this.dist, target: this.target.clone() };
+    }
+    // Glide to a view { az, pol, dist, target } over sec seconds, the short way round
+    animateTo(v, sec) {
+      let daz = (v.az - this.az) % TAU;
+      if (daz > Math.PI) daz -= TAU;
+      if (daz < -Math.PI) daz += TAU;
+      this.anim = { t: 0, dur: sec || 0.6, from: this.view(), to: { az: this.az + daz, pol: v.pol, dist: v.dist, target: (v.target || this.target).clone() } };
     }
     down(e) {
+      if (this.intercept && this.intercept(e)) return;
+      this.anim = null;
       this.dom.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pointers.size === 2) this.pinch = this.pinchDist();
@@ -189,7 +207,17 @@
       const [a, b] = [...this.pointers.values()];
       return Math.hypot(a.x - b.x, a.y - b.y) || 1;
     }
-    update() {
+    update(dt) {
+      if (this.anim) {
+        const a = this.anim;
+        a.t += dt;
+        const k = smooth(0, 1, a.t / a.dur);
+        this.az = a.from.az + (a.to.az - a.from.az) * k;
+        this.pol = a.from.pol + (a.to.pol - a.from.pol) * k;
+        this.dist = a.from.dist + (a.to.dist - a.from.dist) * k;
+        this.target.lerpVectors(a.from.target, a.to.target, k);
+        if (a.t >= a.dur) this.anim = null;
+      }
       const sp = Math.sin(this.pol);
       const dist = this.dist * this.fit;
       this.cam.position.set(
@@ -429,9 +457,10 @@
     const w = stage.clientWidth;
     const h = stage.clientHeight;
     S.motor.root.updateMatrixWorld();
-    S.labelEls.forEach(({ el, pos }) => {
+    S.labelEls.forEach((l) => {
+      const { el, pos } = l;
       tmpV.copy(pos).applyMatrix4(S.motor.root.matrixWorld).project(camera);
-      const visible = S.labelsOn && tmpV.z < 1;
+      const visible = (S.explode || S.labelsOn) && l.show !== false && tmpV.z < 1; // the exploded view has its own labels and switch
       el.style.display = visible ? '' : 'none';
       if (visible) {
         el.style.transform = 'translate(' + ((tmpV.x * 0.5 + 0.5) * w).toFixed(1) + 'px,' + ((-tmpV.y * 0.5 + 0.5) * h).toFixed(1) + 'px) translate(-50%,-130%)';
@@ -574,6 +603,37 @@
   updateRotNote();
 
   NS.UI.init({ S, hooks });
+
+  // Exploded view: it swaps in a motor built without the cut-away, frozen with no current, and asks for the normal one back on leaving
+  NS.Explode.init({
+    S,
+    camera,
+    orbit,
+    canvas: $('gl'),
+    resize: syncDeckHeight,
+    buildExploded() {
+      const motor = K.build(S.spec, Object.assign({}, S.view, { cutaway: false, shellOpacity: 1 }));
+      scene.remove(S.motor.root);
+      S.motor.dispose();
+      S.motor = motor;
+      scene.add(motor.root);
+      motor.update({
+        rotorAngle: S.rotor,
+        fieldAngle: S.rotor,
+        polePairs: motor.polePairs,
+        currents: [0, 0, 0],
+        power: 0,
+        slipAmp: 0,
+        blur: 0,
+        streakPhase: 0,
+        speedColor,
+      });
+      return motor;
+    },
+    restore() {
+      rebuild(S.spec, Number($('preset').value));
+    },
+  });
   if ('ResizeObserver' in window) new ResizeObserver(syncDeckHeight).observe($('deck'));
   syncDeckHeight();
 
@@ -582,18 +642,24 @@
     requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    if (!S.paused) step(dt, now);
-    NS.UI.drawScopes(S.audio.analyser, now, S.waveFrame);
-    orbit.update();
+    if (S.explode) NS.Explode.frame(dt);
+    else {
+      if (!S.paused) step(dt, now);
+      NS.UI.drawScopes(S.audio.analyser, now, S.waveFrame);
+    }
+    orbit.update(dt);
     renderer.render(scene, camera);
     placeLabels();
   }
   requestAnimationFrame(frame);
+  if (query.get('explode') === '1') NS.Explode.enter();
 
   // Interface reserved for the console, tests, and later data playback
   NS.App = {
     state: S,
     audio: S.audio,
+    camera,
+    orbit,
     setSpeed(kmh) {
       S.speed = clamp(Number(kmh), 0, MAX_SPEED);
     },
@@ -603,6 +669,7 @@
       return i >= 0;
     },
     loadSpec(spec) {
+      if (S.explode) NS.Explode.exit(true);
       return rebuild(spec);
     },
   };

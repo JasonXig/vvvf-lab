@@ -15,6 +15,7 @@ A Python desktop lab plus a zero-install browser demo (open `web/index.html`).
 - **Mode ruler:** the speedometer, a slider for jumping to a speed, and the editor of the mode tables in one. The two lanes are the power table and the brake table, each segment is coloured by modulation kind, and the white line is the carrier frequency curve. Drag the white vertical line to jump to any speed, drag a boundary to change a speed range, and click a segment to change its modulation kind, carrier frequency or pulse count, then press "Listen" to hear it at once.
 - **Scale steps:** click the ♪ beside a lane name to lay a "do re mi" run of rising asynchronous modulations over the first 15 km/h in one click.
 - **3D motor:** squirrel-cage induction, surface-mounted PM, interior PM and outer-rotor PM (direct drive) motors; the faster the rotor turns the more it blurs and streaks. A new motor type only needs one rotor file; one with another topology brings its own layout and parts.
+- **Exploded view:** take the motor apart, drag each part out along its path, and click it for what it does, what it is made of and this motor's numbers; the train is frozen meanwhile and carries on afterwards.
 - Top right: a spectrogram and the switching waveform of the phase-A leg. It works on a phone in portrait too.
 
 All features, keyboard shortcuts, URL parameters and the code structure are in [web/README.md](web/README.md).

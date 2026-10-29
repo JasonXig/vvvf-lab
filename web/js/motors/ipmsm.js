@@ -29,7 +29,32 @@
       const group = new T.Group();
 
       const coreMat = H.stdMat(P.steelDark, 0.6, 0.45);
-      group.add(new T.Mesh(H.cyl(g.Rr, Lr, 96), coreMat));
+      group.add(
+        H.piece(new T.Mesh(H.cyl(g.Rr, Lr, 96), coreMat), {
+          id: 'rotorCore',
+          name: 'Rotor core (with magnet pockets)',
+          dir: [0, 0, 1],
+          dist: g.xNear,
+          info: {
+            role: 'Laminated steel with V-shaped pockets for the magnets. The thin iron bridges around the pockets hold the magnets in against the centrifugal force.',
+            material: 'Silicon-steel laminations',
+            facts: [],
+          },
+        })
+      );
+      const magnets = H.piece(new T.Group(), {
+        id: 'magnets',
+        name: 'Permanent magnets (buried, V-shaped)',
+        dir: [0, 0, 1],
+        dist: g.xFar,
+        step: 2,
+        info: {
+          role: 'Two magnets per pole, slid into the pockets along the axis. Burying them protects them at high speed, and the iron between them adds reluctance torque: the rotor iron itself pulls towards the field, on top of the magnet torque.',
+          material: 'Neodymium-iron-boron (NdFeB)',
+          facts: [2 * spec.poles + ' magnets in ' + spec.poles + ' V pairs', 'V angle ' + spec.vAngleDeg + '°'],
+        },
+      });
+      group.add(magnets);
 
       const northMat = H.stdMat(P.north, 0.35, 0.45);
       const southMat = H.stdMat(P.south, 0.35, 0.45);
@@ -46,7 +71,7 @@
           const mag = new T.Mesh(new T.BoxGeometry(spec.magnetWidth, spec.magnetThickness, Lr + 0.05), i % 2 === 0 ? northMat : southMat);
           mag.position.set(rc * u.x + side * d * t.x, rc * u.y + side * d * t.y, 0);
           mag.rotation.z = Math.atan2(w.y, w.x);
-          group.add(mag);
+          magnets.add(mag);
         });
       }
 

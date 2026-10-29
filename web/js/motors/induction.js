@@ -28,7 +28,34 @@
       const group = new T.Group();
 
       const coreMat = H.stdMat(P.steelDark, 0.6, 0.45);
-      group.add(new T.Mesh(H.cyl(g.Rr, Lr, 96), coreMat));
+      group.add(
+        H.piece(new T.Mesh(H.cyl(g.Rr, Lr, 96), coreMat), {
+          id: 'rotorCore',
+          name: 'Rotor core',
+          dir: [0, 0, 1],
+          dist: g.xNear,
+          info: {
+            role: 'Laminated steel like the stator, with slots just under the surface for the cage bars. It carries the flux across from the stator and back.',
+            material: 'Silicon-steel laminations',
+            facts: [n + ' slots for the bars'],
+          },
+        })
+      );
+      // the cage: bars + end rings, one piece in the exploded view
+      const cage = H.piece(new T.Group(), {
+        id: 'cage',
+        name: 'Squirrel cage (bars + end rings)',
+        dir: [0, 0, 1],
+        dist: g.xFar,
+        step: 2,
+        info: {
+          role: 'Bars in the rotor slots, shorted together by a ring at each end. The rotating field sweeps past the bars at the slip frequency and induces currents in them; the force on those currents drives the rotor. That is why the rotor always turns a little slower than the field.',
+          material: 'Copper bars brazed to copper end rings (common in traction motors), or die-cast aluminium',
+          facts: [n + ' bars against ' + spec.statorSlots + ' stator slots: the two numbers are kept different on purpose, to avoid cogging and magnetic noise'],
+          note: 'A die-cast cage is one piece with the core and cannot be pulled out; copper bars are pushed into the slots before the end rings are brazed on.',
+        },
+      });
+      group.add(cage);
 
       const barDepth = Math.min(0.1, (g.Rr - g.Rsh) * 0.3);
       const barWidth = Math.min(0.09, ((TAU * g.Rr) / n) * 0.5);
@@ -52,13 +79,13 @@
         bars.setColorAt(j, base);
       }
       bars.instanceColor.needsUpdate = true;
-      group.add(bars);
+      cage.add(bars);
 
       const ringMat = H.stdMat(P.copper, 0.75, 0.3);
       [-1, 1].forEach((sg) => {
         const ring = new T.Mesh(H.ring(g.Rr, g.Rr - 0.13, 0, TAU, 0.06), ringMat);
         ring.position.z = sg * (Lr / 2 + 0.05);
-        group.add(ring);
+        cage.add(ring);
       });
 
       const tmp = new T.Color();

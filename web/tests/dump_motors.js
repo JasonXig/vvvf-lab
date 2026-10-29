@@ -47,7 +47,36 @@ function inspect(motor) {
       zMax = Math.max(zMax, Math.abs(v.z));
     }
   });
-  return { meshes, finite, clipped, rMaxXY, zMax };
+  return { meshes, finite, clipped, rMaxXY, zMax, explode: inspectPieces(motor) };
+}
+
+// Pieces of the exploded view: what each one is, and whether every physical mesh belongs to exactly one piece
+function inspectPieces(motor) {
+  const notPieces = new Set(); // the field ring and the blur shell are not physical parts
+  motor.root.traverse((o) => {
+    if (o.isMesh && o.material && o.material.isShaderMaterial) notPieces.add(o);
+  });
+  let untagged = 0;
+  let nested = 0;
+  motor.root.traverse((o) => {
+    let tags = 0;
+    for (let a = o; a; a = a.parent) if (a.userData && a.userData.explode) tags++;
+    if (o.userData.explode && tags > 1) nested++;
+    if (o.isMesh && !notPieces.has(o) && tags === 0) untagged++;
+  });
+  return {
+    untagged,
+    nested,
+    pieces: motor.pieces.map((p) => ({
+      id: p.id,
+      name: p.name,
+      dir: p.dir.toArray(),
+      dist: p.dist,
+      step: p.step,
+      objects: p.objects.length,
+      info: p.info,
+    })),
+  };
 }
 
 const out = { types: K.typeList(), builds: [], errors: {} };

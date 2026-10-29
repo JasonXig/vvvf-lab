@@ -30,6 +30,7 @@ URL parameters open the page in a given state:
 | `map` | Replace both the power and brake tables with a preset: `reference`, `gto`, `igbt`, `scale` | `?map=igbt` |
 | `cut` | `0` means no cut-away (housing, or the drum of an outer rotor) | `?cut=0` |
 | `demo` | `1` starts the automatic demo | `?demo=1` |
+| `explode` | `1` opens the exploded view straight away | `?explode=1&type=ipmsm` |
 | `coach` | `0` hides the first-run tips | `?coach=0` |
 | `worklet` | `0` skips AudioWorklet and forces the fallback (for testing) | `?worklet=0` |
 | `pedal` | Old parameter: `power` is P4, `brake` is B3 | `?pedal=power` |
@@ -160,6 +161,17 @@ mode table ─→ operating point (modulation kind, fundamental f1, modulation i
 - **Outer rotor:** turned inside out. The stator sits in the middle on a **fixed spindle** (the support with round lightening holes carries it) with its slots facing outwards, and the rotor is a **drum** turning around it with the magnets on its inside. The drum is the outer shell, so the cut-away notch goes through the drum (it stays still while the drum turns through it, and the magnets appear and disappear at its edges), and the "Outer shell" opacity in Display applies to the drum. Machines like this are found in hub motors, fans and direct drives: the large air-gap diameter gives a lot of torque at low speed, so the default here is a **direct drive** (gear ratio 1) with 16 poles. The many poles make up for the slow rotor: the fundamental frequency at 130 km/h is about 107 Hz, the same order as the geared induction motor (about 150 Hz). This is a demo configuration, not a particular train.
 - **The light marker on the shaft end** (on an outer rotor: on the front rim of the drum and on the hub at the back): for judging direction and speed.
 
+## Taking the motor apart (exploded view)
+
+![Exploded view of the induction motor, with the card of the squirrel cage open](../docs/web_explode.png)
+
+**Take apart** (bottom left of the motor, or `E`) takes the motor apart into its main pieces: housing, the two end shields with their bearings, stator core, three-phase winding, rotor core, squirrel cage or magnets, shaft. The outer rotor has drum, magnets, stator, winding and the fixed spindle. The view fills the screen while you are in it.
+
+- **The train is frozen**, not stopped: speed, notch and rotor position stay as they were, the sound goes quiet, and when you press **Done** (or `Esc`, or `E` again) the pieces slide back together and everything carries on from where it was. The controller keys do nothing meanwhile.
+- **Drag a piece** to slide it out or back. Each piece moves only along its own path (most along the axis; the housing lifts off upwards, the shaft goes down and back), between where it belongs and one and a half times its exploded distance, so nothing gets lost. Dragging the background still turns the view; the piece that stays put (the stator, or the outer rotor's spindle) turns the view too.
+- **Click a piece, or its label**, for its card: what it does, what it is made of, and the numbers of this motor (slots and slots per pole per phase, bar count against slot count, magnet count, rotor speed at 100 km/h). Where the exploded view is not how the real thing comes apart, the card says so: a die-cast cage cannot be pulled out of its core, and the coils are laid into the slots from the bore rather than slid out along the axis.
+- **Spread out** puts every piece back at its exploded place, **Put together** slides them all home (you stay in the view), **Labels** switches the names on and off (off by default on a phone; tap a piece instead). The field ring and the speed blur are hidden, the cut-away is off and the housing solid; all of that comes back as it was.
+
 ## How the speed is shown
 
 The real speed at 130 km/h is about 4500 rpm, 75 revolutions per second, which a 60-frame picture cannot show, and it gives a "wagon-wheel" illusion. So there are two display modes (switch in "Display"):
@@ -208,6 +220,9 @@ You only need to create one new file that writes the rotor; the stator, windings
       // ctx.spec is the motor definition, ctx.g is the derived geometry (Rr rotor radius, L length, p pole pairs ...)
       const group = new T.Group();     // Z is the rotation axis; add all rotor parts to this
       // ... add meshes to group ...
+      // mark every physical part for the exploded view: its path, how far it goes, and its card
+      // group.add(H.piece(coreMesh, { id: 'rotorCore', name: 'Rotor core', dir: [0, 0, 1], dist: ctx.g.xNear,
+      //   info: { role: 'What it does ...', material: 'What it is made of', facts: ['Numbers from ctx.spec'] } }));
       return {
         group,
         fadeMats: [/* materials to fade when it spins fast */],
@@ -220,6 +235,8 @@ You only need to create one new file that writes the rotor; the stator, windings
 ```
 
 Then add `<script src="js/motors/mymotor.js"></script>` to `index.html`, before `app.js`, and it is in the drop-down.
+
+**Pieces of the exploded view.** `H.piece(object, meta)` marks an object as a piece: `id`, `name`, `dir` (the path it slides out along, in motor coordinates), `dist` (how far; `0` = stays put), `step` (the order it comes off in: `0` covers, `1` default, `2` what was inside them, so pieces do not pass through each other), and `info` (`role`, `material`, `facts`, optional `note`) for its card. Several objects with the same `id` move as one piece. The shared stator, winding, housing, end shields and shaft are marked already, and `ctx.g.xNear` / `ctx.g.xFar` are the two distances along the axis the shared pieces use. `tests/test_web_motors.py` fails if any mesh of a motor is not in a piece, or a card has no text.
 
 The `state` passed to `update` every frame:
 
@@ -270,6 +287,7 @@ labels(ctx, { winding, field }) { return [/* labels of the shared parts, placed 
 | `js/scopes.js` | Spectrogram, switching waveform, level bar |
 | `js/ruler.js` | The mode ruler: drawing, drag-to-jump, boundary dragging, editor, lane menus, scale steps |
 | `js/ui.js` | Cab deck: master controller, readouts, inverter and sound, keyboard, drawer, first-run tips |
+| `js/explode.js` | Exploded view: freezing, sliding the pieces out and back, dragging along a path, info cards, leaving and carrying on |
 | `js/app.js` | Main program: controller → speed → operating point → sound and 3D |
 
 In the console you can use `window.VVVF3D.App`: `state` is the whole state, `audio` is the audio engine, `setSpeed(kmh)` sets the speed, `setNotch('P3')` moves the controller, and `loadSpec(spec)` loads a motor definition.
@@ -280,9 +298,9 @@ The logic layer and the sound-synthesis core do not depend on a browser, so they
 
 - `tests/test_web_logic.py`: mode tables, drivetrain, train dynamics, overmodulation conversion, all cross-checked against the Python version and independent formulas; the notch table, slip proportional to torque, acceleration of each notch, **the inverter keeps running in neutral and hold (so the sound continues)**, no traction or sound with the inverter off; the calibration of few-pulse synchronous modulation is verified with an independent numpy numerical integration; pulse counts must be odd; note names and frequencies, scales, and **scale steps** (8 steps over the first 15 km/h, the carrier curve outside the replaced range must not change, across several segments, up to the top speed, and the messages for unreasonable input).
 - `tests/test_web_synth.py`: the strongest lines of the JS synthesis against the Python `DriveSynth` one by one (within 4%); asynchronous sidebands, synchronous sidebands, three-phase balance (N not a multiple of 3), whether the fundamental is subtracted cleanly in wide 3-pulse; whether it is fast enough for real time.
-- `tests/test_web_motors.py`: builds every 3D motor type and preset in Node with the real three.js (geometry needs no WebGL), with the cut-away on and off: finite geometry of the expected size, labels in place, a few frames of `update()`; inner-rotor types are cut in their geometry and the outer rotor with clipping planes on exactly its turning parts; definitions that do not fit together are refused with a clear message.
+- `tests/test_web_motors.py`: builds every 3D motor type and preset in Node with the real three.js (geometry needs no WebGL), with the cut-away on and off: finite geometry of the expected size, labels in place, a few frames of `update()`; inner-rotor types are cut in their geometry and the outer rotor with clipping planes on exactly its turning parts; definitions that do not fit together are refused with a clear message; every mesh belongs to exactly one piece of the exploded view, each type has the expected pieces with valid paths and filled-in cards, and the numbers on the cards come from the motor definition (cross-checked with formulas written out in Python).
 
-The UI itself was checked with headless Edge (`file://`, sending real mouse, keyboard and touch events over the DevTools protocol) and the in-app browser: controller clicks and dragging, keyboard, spectral lines in the spectrogram persisting in neutral, ruler drag-to-jump / selecting a segment / changing modulation and pulse count / dragging boundaries / split and delete / listen / lane menus, drawer, demo, inverter switch, phone touch, AudioWorklet loading (including `file://`), the `?worklet=0` fallback, and the layouts at 1400×860, 1280×720, 1024×640, tablet and phone portrait. **Not verified:** frame rate on a real GPU, a real phone, and what actually comes out of the speakers.
+The UI itself was checked with headless Edge (`file://`, sending real mouse, keyboard and touch events over the DevTools protocol) and the in-app browser: controller clicks and dragging, keyboard, spectral lines in the spectrogram persisting in neutral, ruler drag-to-jump / selecting a segment / changing modulation and pulse count / dragging boundaries / split and delete / listen / lane menus, drawer, demo, inverter switch, phone touch, AudioWorklet loading (including `file://`), the `?worklet=0` fallback, and the layouts at 1400×860, 1280×720, 1024×640, tablet and phone portrait; and the exploded view (freezing and carrying on, dragging along a path and its limits, a drag across the path that does nothing, cards from pieces and labels, the toolbar, `Esc` and `E`, the outer rotor, a finger on a phone). **Not verified:** frame rate on a real GPU, a real phone, and what actually comes out of the speakers.
 
 ## Relation to the Python part
 

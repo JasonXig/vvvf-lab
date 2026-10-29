@@ -65,6 +65,44 @@
   .pill.on { background: rgba(34, 211, 238, .18); border-color: rgba(34, 211, 238, .5); color: #c3f4fc; }
   .pill.round { width: 30px; padding: 4px 0; text-align: center; font-weight: 700; }
 
+  /* ================= Exploded view ================= */
+  /* the button sits in the bottom-left corner of the stage, just above the cab deck */
+  #btnExplode { position: fixed; left: 14px; bottom: calc(var(--deck-h) + 10px); z-index: 6; display: flex; align-items: center; gap: 7px; padding: 5px 14px 5px 10px; background: var(--glass); backdrop-filter: blur(12px); }
+  #btnExplode svg { color: var(--cyan); }
+  #xbar, #xhint { display: none; }
+  body.exploded #top, body.exploded #cards, body.exploded #deck, body.exploded #drawer, body.exploded #coach, body.exploded #btnExplode { display: none !important; }
+  body.exploded #stage { bottom: 0; }
+  body.exploded #xbar { display: flex; }
+  body.exploded #xhint { display: block; }
+  #xbar {
+    position: fixed; left: 14px; top: 14px; z-index: 8; align-items: center; gap: 14px; max-width: calc(100vw - 28px);
+    padding: 6px 8px 6px 16px; border-radius: 999px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px);
+  }
+  .pill.go { background: rgba(34, 211, 238, .2); border-color: rgba(34, 211, 238, .55); color: #d8f8fd; font-weight: 600; }
+  .pill.go:hover { background: rgba(34, 211, 238, .32); }
+  .xtag { pointer-events: auto; cursor: pointer; font: 12px/1.5 var(--font-ui); }
+  .xtag:hover, .xtag.hot { border-color: rgba(34, 211, 238, .75); color: #fff; background: rgba(9, 38, 50, .92); }
+  #xhint {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 7; width: max-content; max-width: calc(100vw - 28px); text-align: center;
+    font-size: 12px; color: var(--muted); padding: 7px 16px; border-radius: 14px; background: rgba(8, 13, 24, .8); border: 1px solid var(--line);
+  }
+  #xhint b { color: #cfe0f5; font-weight: 600; }
+  #xFrozen { color: var(--dim); margin-top: 2px; }
+  #xcard {
+    position: fixed; right: 14px; top: 14px; width: 340px; max-height: calc(100% - 100px); overflow-y: auto; z-index: 9; padding: 14px 16px 16px;
+    border-radius: 18px; background: rgba(8, 13, 24, .95); border: 1px solid rgba(34, 211, 238, .4); box-shadow: 0 20px 56px rgba(0, 0, 0, .6); scrollbar-width: thin;
+  }
+  .xc-head { display: flex; align-items: flex-start; gap: 10px; }
+  .xc-head h3 { flex: 1; margin: 2px 0 8px; font-size: 16px; }
+  #xcRole { margin: 0 0 10px; color: #cfdaee; font-size: 13px; }
+  #xcard dl { margin: 0 0 8px; font-size: 13px; }
+  #xcard dt { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  #xcard dd { margin: 1px 0 0; color: #e2eaf7; }
+  #xcFacts { margin: 0 0 8px; padding-left: 18px; font-size: 13px; color: #cfdaee; }
+  #xcFacts li { margin: 3px 0; }
+  #xcNote:empty { display: none; }
+  #xcard .actions { margin-top: 12px; }
+
   /* ================= Top right: spectrogram and switching waveform ================= */
   #cards { position: fixed; right: 14px; top: 14px; width: 272px; z-index: 6; display: flex; flex-direction: column; gap: 10px; }
   .card { background: rgba(8, 13, 24, .84); border: 1px solid var(--line); border-radius: 16px; padding: 9px 12px 11px; }
@@ -372,6 +410,13 @@
     .pop-scroll { max-height: none; overflow: visible; }
     #drawer { left: 8px; right: 8px; width: auto; top: 54px; bottom: 8px; }
     #coach { bottom: calc(var(--deck-h) + 4px); }
+    #btnExplode { left: 8px; bottom: calc(var(--deck-h) + 8px); }
+    #xbar { left: 8px; top: 8px; right: 8px; gap: 8px; padding: 4px 6px 4px 12px; flex-wrap: wrap; border-radius: 18px; }
+    #xbar small { display: none; }
+    #xbar .topbtns { flex-wrap: wrap; }
+    #xhint { bottom: 8px; }
+    #xhint .long { display: none; }
+    #xcard { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 48vh; }
   }
 </style>
 </head>
@@ -380,6 +425,7 @@
   <canvas id="gl"></canvas>
   <div id="labels"></div>
 </div>
+<button class="pill" id="btnExplode" title="Exploded view: take the motor apart (E)"><svg viewBox="0 0 20 14" width="20" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="7" y="3.5" width="6" height="7" rx="1.2"/><path d="M4.5 4v6M2 5v4M15.5 4v6M18 5v4"/></g></svg><span>Take apart</span></button>
 <div id="nogl" hidden>This device cannot create a WebGL view. Please use a recent browser (Chrome or Edge) and make sure hardware acceleration is turned on.</div>
 
 <!-- ============ Top ============ -->
@@ -402,6 +448,30 @@
     <button class="pill round" id="btnHelp" aria-label="How to play" title="How to play">?</button>
   </nav>
 </header>
+
+<!-- ============ Exploded view: toolbar, hint, info card ============ -->
+<header id="xbar">
+  <div class="brand"><span>Exploded view</span><small id="xName"></small></div>
+  <nav class="topbtns">
+    <button class="pill" id="xSpread" title="Move every part back to its place in the exploded view">Spread out</button>
+    <button class="pill" id="xJoin" title="Slide every part back together (you stay in the exploded view)">Put together</button>
+    <button class="pill on" id="xLabels" aria-pressed="true">Labels</button>
+    <button class="pill go" id="xDone" title="Put the motor back together and carry on (Esc or E)">Done</button>
+  </nav>
+</header>
+<div id="xhint">
+  <b>Drag a part</b> to slide it out or back along its path<span class="long"> · drag the background to turn the view</span> · <b>click</b> a part for what it is
+  <div id="xFrozen"></div>
+</div>
+<aside id="xcard" hidden role="dialog" aria-labelledby="xcTitle">
+  <div class="xc-head"><h3 id="xcTitle"></h3><button class="x" id="xcClose" aria-label="Close">✕</button></div>
+  <p id="xcRole"></p>
+  <dl><dt>Material</dt><dd id="xcMat"></dd></dl>
+  <ul id="xcFacts"></ul>
+  <p class="note" id="xcNote"></p>
+  <div class="actions" id="xcMove"><button class="btn" id="xcOut">Pull out</button><button class="btn" id="xcBack">Put back</button></div>
+  <p class="note" id="xcStay">This part stays in place: the others come off it.</p>
+</aside>
 
 <!-- ============ Top right: spectrogram, switching waveform ============ -->
 <aside id="cards">
@@ -426,6 +496,7 @@
     <li><b>Move the master controller</b>: push right (or press <kbd>↑</kbd>/<kbd>W</kbd>) to start accelerating, pull left (<kbd>↓</kbd>/<kbd>S</kbd>) to brake. <kbd>Space</kbd> returns to neutral N, <kbd>H</kbd> holds the speed. In neutral and hold the inverter keeps running, so the sound continues.</li>
     <li><b>Drag the white vertical line on the ruler</b> (or press and drag anywhere on the ruler) to jump to any speed, then stop there and listen.</li>
     <li><b>Click a segment on the ruler</b> to change its modulation kind, carrier frequency or pulse count, and press "Listen" to hear it right away; drag the boundary between two segments to change the speed range.</li>
+    <li><b>Take the motor apart</b> (bottom left of the motor, or <kbd>E</kbd>): drag each part out along its path and click it to see what it does. The train waits meanwhile.</li>
   </ol>
   <div class="actions"><button class="btn primary" id="coachGo">Start: push to P4 and accelerate</button><button class="btn" id="coachOk">Got it</button></div>
 </div>
@@ -590,6 +661,7 @@
 <script src="js/scopes.js"></script>
 <script src="js/ruler.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/explode.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

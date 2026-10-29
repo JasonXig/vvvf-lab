@@ -60,6 +60,9 @@
       g.endZ = g.L / 2 + 0.26 + 0.2 / g.p;
       g.frontZ = g.L / 2 + 0.08;
       g.hubR = g.Rsh + 0.12;
+      // exploded view: the drum comes off forwards (near step), the magnets further (far step)
+      g.xNear = g.L + 0.9;
+      g.xFar = 2 * g.L + 1.3;
       return g;
     },
   };
@@ -67,14 +70,57 @@
   // The stator is the inner member here, so it stays whole, like the rotor of an inner-rotor motor; the cut-away goes through the drum
   const whole = (g) => ({ full: true, k0: 0, k1: g.Z, a0: 0, a1: TAU });
 
+  const drumPiece = ({ spec, g }) => {
+    const gear = spec.drivetrain.gearRatio;
+    return {
+      id: 'drum',
+      name: 'Rotor drum',
+      dir: [0, 0, 1],
+      dist: g.xNear,
+      step: 0,
+      info: {
+        role: 'The rotor: a steel drum that carries the magnets on its inside and closes their flux path from one pole to the next. It turns around the stator on the bearing at its hub; on a direct drive it turns the wheel or axle without a gearbox.',
+        material: 'Steel',
+        facts: [(gear === 1 ? 'Direct drive (gear ratio 1)' : 'Gear ratio ' + gear) + ': ' + H.rpmAt(spec, 100) + ' rpm at 100 km/h'],
+      },
+    };
+  };
+
+  // Info cards of the exploded view: the stator card is the shared one with the slots turned outwards
+  const statorPiece = (ctx) => {
+    const m = K.pieces.stator(ctx);
+    return Object.assign(m, {
+      name: 'Stator core (slots facing out)',
+      dir: [0, 0, -1], // slides off the spindle backwards
+      dist: ctx.g.xNear,
+      info: Object.assign({}, m.info, {
+        role: 'The same slotted stack of electrical-steel sheets as in any motor, turned inside out: the slots open outwards, towards the air gap and the magnets on the drum.',
+      }),
+    });
+  };
+
   const parts = {
-    stator: (ctx) => new T.Mesh(H.slottedCore(ctx, ctx.g.Rso, ctx.g.Rs, ctx.g.Rsi, whole(ctx.g)), H.stdMat(P.steel, 0.55, 0.42)),
-    windings: (ctx) => K.parts.windings(Object.assign({}, ctx, { kept: whole(ctx.g) })),
+    stator: (ctx) => H.piece(new T.Mesh(H.slottedCore(ctx, ctx.g.Rso, ctx.g.Rs, ctx.g.Rsi, whole(ctx.g)), H.stdMat(P.steel, 0.55, 0.42)), statorPiece(ctx)),
+    windings(ctx) {
+      const w = K.parts.windings(Object.assign({}, ctx, { kept: whole(ctx.g) }));
+      Object.assign(w.group.userData.explode, { dist: ctx.g.xFar + 0.2, step: 2 }); // behind the stator, which comes off first
+      return w;
+    },
 
     // Nothing here turns: the fixed spindle, and the support (a spider with lightening holes) that carries the stator
     housing(ctx) {
       const { g } = ctx;
-      const group = new T.Group();
+      const group = H.piece(new T.Group(), {
+        id: 'spindle',
+        name: 'Fixed spindle + stator support',
+        dir: [0, 0, -1],
+        dist: 0, // the fixed part: everything else comes off it
+        info: {
+          role: 'The spindle does not turn. It carries the stator through the support (the spider with the round holes), and the drum turns around it on bearings. In hub motors the cables usually come in through a hollow spindle.',
+          material: 'Steel spindle; cast or welded support',
+          facts: [],
+        },
+      });
       group.add(new T.Mesh(H.cyl(g.Rsh, 2 * (g.endZ + 0.5), 48), H.stdMat(P.shaft, 0.85, 0.28)));
       const shape = new T.Shape();
       shape.absarc(0, 0, g.Rsi + 0.004, 0, TAU, false);
@@ -96,7 +142,7 @@
     // What turns with the drum besides the drum itself: the hub on its bearing around the spindle, and two light markers (front rim, back hub)
     shaft(ctx) {
       const { spec, g, view } = ctx;
-      const group = new T.Group();
+      const group = H.piece(new T.Group(), drumPiece(ctx)); // hub and markers come off together with the drum
       const hub = new T.Mesh(H.ring(g.hubR, g.Rsh + 0.004, 0, TAU, 0.3), H.stdMat(0x6b7787, 0.7, 0.4));
       hub.position.z = -(g.endZ + 0.12);
       group.add(hub);
@@ -165,23 +211,37 @@
 
       // The drum: back iron for the magnets, plus its end plate at the back; it is also the outer shell, so it follows the shell-opacity slider
       const drumMat = H.clip(new T.MeshStandardMaterial({ color: P.housing, metalness: 0.45, roughness: 0.5, side: T.DoubleSide }), planes);
+      const shell = H.piece(new T.Group(), drumPiece(ctx));
+      group.add(shell);
       const drum = new T.Mesh(H.ring(g.Ro, drumIn, 0, TAU, g.frontZ + g.endZ, 96), drumMat);
       drum.position.z = (g.frontZ - g.endZ) / 2;
       drum.renderOrder = 6;
-      group.add(drum);
+      shell.add(drum);
       const plate = new T.Mesh(H.ring(drumIn + 0.002, g.hubR - 0.01, 0, TAU, 0.07, 96), drumMat);
       plate.position.z = -g.endZ;
       plate.renderOrder = 6;
-      group.add(plate);
+      shell.add(plate);
 
       // Magnets on the inside of the drum, N and S alternating; the colour is the pole that faces the air gap
       const northMat = H.clip(H.stdMat(P.north, 0.35, 0.45, { side: T.DoubleSide }), planes);
       const southMat = H.clip(H.stdMat(P.south, 0.35, 0.45, { side: T.DoubleSide }), planes);
       const pitch = TAU / spec.poles;
       const halfWidth = (spec.magnetCoverage * pitch) / 2;
+      const magnets = H.piece(new T.Group(), {
+        id: 'magnets',
+        name: 'Permanent magnets (on the drum)',
+        dir: [0, 0, 1],
+        dist: g.xFar,
+        info: {
+          role: 'N and S magnets on the inside of the drum, facing the air gap. As in any PM synchronous motor they turn exactly in step with the rotating field, so the rotor turns once for every p cycles of f₁.',
+          material: 'Neodymium-iron-boron (NdFeB), glued to the drum',
+          facts: [spec.poles + ' magnets, so the rotor turns once every ' + g.p + ' cycles of f₁: that is how a slow direct drive still gets a usable inverter frequency'],
+        },
+      });
+      group.add(magnets);
       for (let i = 0; i < spec.poles; i++) {
         const c = i * pitch; // magnet 0 (N) faces the 0° direction of the rotor
-        group.add(new T.Mesh(H.ring(drumIn, g.Rm, c - halfWidth, c + halfWidth, g.L * 0.98), i % 2 === 0 ? northMat : southMat));
+        magnets.add(new T.Mesh(H.ring(drumIn, g.Rm, c - halfWidth, c + halfWidth, g.L * 0.98), i % 2 === 0 ? northMat : southMat));
       }
 
       const a = view.cutCenterDeg * DEG - view.cutHalfWidthDeg * DEG - 0.25; // on the drum, just past the lower edge of the notch

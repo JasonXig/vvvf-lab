@@ -116,6 +116,9 @@
       g.hubR = g.Rsh + 0.16;
       g.rMid = g.Ri + s.slotDepth * 0.55; // centre radius of the conductors in the slots
       g.gapR = (g.Ri + g.Rr) / 2; // middle of the air gap, where the field ring is drawn
+      // exploded view: how far the pieces move along the axis, a near step (rotor core, winding) and a far one (cage or magnets)
+      g.xNear = g.L + 0.8;
+      g.xFar = 2 * g.L + 1.1;
       return g;
     },
   };
@@ -251,6 +254,96 @@
       }
       return mat;
     },
+    // Mark obj as a piece of the exploded view; returns obj. meta = { id, name, dir: [x, y, z], dist, step, info: { role, material, facts, note } }:
+    // dir is the path the piece slides out along (motor coordinates), dist how far it goes when the motor is taken apart (0 = stays put),
+    // step the order it comes off in (0 covers, 1 the default, 2 what sits inside those), so pieces do not pass through each other.
+    // Several objects with the same id move as one piece.
+    piece(obj, meta) {
+      obj.userData.explode = meta;
+      return obj;
+    },
+    // Rotor speed [rpm] at a vehicle speed, for the info cards
+    rpmAt(spec, kmh) {
+      return Math.round(NS.Drive.compute(kmh, 2, true, spec.drivetrain).nr);
+    },
+  };
+  const fmt = (x) => String(Math.round(x * 100) / 100);
+
+  // ---- Pieces of the exploded view: paths and info cards of the shared parts ---------------------
+  // Exported as MotorKit.pieces, so a motor type can reuse a card and change only what differs (see outer-rotor.js).
+  const PIECES = {
+    stator: ({ spec, g }) => ({
+      id: 'stator',
+      name: 'Stator core',
+      dir: [0, 0, 1],
+      dist: 0,
+      info: {
+        role: 'A stack of thin, insulated electrical-steel sheets with slots for the winding. It carries the rotating magnetic flux; making it from thin sheets instead of solid iron keeps the eddy currents, and the heat they make, small.',
+        material: 'Silicon-steel laminations, typically 0.35–0.5 mm thick',
+        facts: [g.Z + ' slots', fmt(g.Z / (3 * spec.poles)) + ' slots per pole per phase (q = slots / (3 × poles))'],
+      },
+    }),
+    winding: ({ spec, g }) => ({
+      id: 'winding',
+      name: 'Three-phase winding',
+      dir: [0, 0, -1],
+      dist: g.xNear,
+      info: {
+        role: 'The coils of phases A, B and C (yellow, green, red) lie in the slots and are joined by the end turns outside the core. Fed with three currents 120° apart, they make a magnetic field that rotates at f₁ / p revolutions per second.',
+        material: 'Insulated copper wire or formed copper bars, impregnated with resin',
+        facts: [spec.poles + ' poles, so p = ' + g.p + ' pole pairs', 'Synchronous speed n_s = 60 · f₁ / p = ' + fmt(60 / g.p) + ' rpm for every Hz of f₁'],
+        note: 'In a real motor the coils are laid into the slots from the bore and cannot slide out along the axis; the exploded view only moves them aside so you can see them.',
+      },
+    }),
+    housing: ({ g }) => ({
+      id: 'housing',
+      name: 'Housing (frame)',
+      dir: [0, 1, 0],
+      dist: 2 * g.Rframe + 0.45,
+      step: 0,
+      info: {
+        role: 'Holds the stator core and the two end shields in line, and is what the motor is mounted by. On many traction motors it also guides the cooling air along the core.',
+        material: 'Cast iron, welded steel or aluminium alloy',
+        facts: [],
+      },
+    }),
+    endFront: ({ g }) => ({
+      id: 'endFront',
+      name: 'End shield (front)',
+      dir: [0, 0, 1],
+      dist: g.xFar + 0.55,
+      step: 0,
+      info: {
+        role: 'Closes the end of the housing and carries a bearing in its hub, so the shaft stays centred in the bore and the air gap stays even all the way round.',
+        material: 'Cast iron or aluminium alloy; a rolling bearing in the hub',
+        facts: [],
+        note: 'Usually one of the two bearings locates the shaft along its axis and the other is free to slide, so the shaft can grow as it warms up.',
+      },
+    }),
+    endBack: ({ g }) => ({
+      id: 'endBack',
+      name: 'End shield (back)',
+      dir: [0, 0, -1],
+      dist: g.xNear + 0.5,
+      step: 0,
+      info: {
+        role: 'The other end of the housing, with the second bearing. Together the two bearings hold the rotor on the axis of the bore.',
+        material: 'Cast iron or aluminium alloy; a rolling bearing in the hub',
+        facts: [],
+      },
+    }),
+    shaft: ({ spec, g }) => ({
+      id: 'shaft',
+      name: 'Shaft',
+      dir: [0, -1, -0.35], // down, and a little back so it clears the rotor core that has slid forwards
+      dist: (g.Ro + g.Rsh + 0.55) * 1.06,
+      step: 2,
+      info: {
+        role: 'Carries the torque from the rotor core out to the gearbox and the wheelset. The rotor core is pressed or shrunk onto it. The light marks on its ends show which way and how fast it turns.',
+        material: 'Forged alloy steel',
+        facts: ['At 100 km/h it turns at ' + helpers.rpmAt(spec, 100) + ' rpm (wheel ' + spec.drivetrain.wheelDiameter + ' m, gear ratio ' + spec.drivetrain.gearRatio + ')'],
+      },
+    }),
   };
 
   function disposeObject(root) {
@@ -268,7 +361,7 @@
   // ---- Three-phase windings: in-slot conductors (instanced bars) + end connections ----------------
   function buildWindings(ctx) {
     const { g, kept, view } = ctx;
-    const group = new T.Group();
+    const group = helpers.piece(new T.Group(), PIECES.winding(ctx));
     const p = g.p;
     const slots = [];
     for (let k = kept.k0; k < kept.k1; k++) {
@@ -367,18 +460,20 @@
       side: T.DoubleSide,
       depthWrite: opaque,
     });
-    const shell = new T.Mesh(helpers.ring(g.Rframe, g.Ro + 0.005, kept.a0, kept.a1, 2 * g.endZ), shellMat);
+    const shell = helpers.piece(new T.Mesh(helpers.ring(g.Rframe, g.Ro + 0.005, kept.a0, kept.a1, 2 * g.endZ), shellMat), PIECES.housing(ctx));
     shell.renderOrder = 6;
     group.add(shell);
     const hubMat = helpers.stdMat(0x6b7787, 0.7, 0.4);
     [-1, 1].forEach((sg) => {
+      const end = helpers.piece(new T.Group(), sg > 0 ? PIECES.endFront(ctx) : PIECES.endBack(ctx)); // end shield: plate + bearing hub
+      end.position.z = sg * g.endZ;
       const plate = new T.Mesh(helpers.ring(g.Rframe, g.hubR, kept.a0, kept.a1, 0.07), shellMat);
-      plate.position.z = sg * g.endZ;
       plate.renderOrder = 6;
-      group.add(plate);
+      end.add(plate);
       const hub = new T.Mesh(helpers.cyl(g.hubR, 0.3, 48), hubMat);
-      hub.position.z = sg * (g.endZ + 0.12);
-      group.add(hub);
+      hub.position.z = sg * 0.12;
+      end.add(hub);
+      group.add(end);
     });
     return {
       group,
@@ -395,7 +490,7 @@
   // ---- Common rotor-side parts: shaft and rotation marker -----------------------------------
   function buildShaft(ctx) {
     const { g } = ctx;
-    const group = new T.Group();
+    const group = helpers.piece(new T.Group(), PIECES.shaft(ctx));
     group.add(new T.Mesh(helpers.cyl(g.Rsh, 2 * (g.endZ + 0.62), 48), helpers.stdMat(PALETTE.shaft, 0.85, 0.28)));
     const markMat = new T.MeshStandardMaterial({ color: PALETTE.marker, emissive: PALETTE.marker, emissiveIntensity: 0.5, roughness: 0.5 });
     [-1, 1].forEach((sg) => {
@@ -520,8 +615,10 @@
   //   shaft(ctx)    → THREE.Object3D (turns together with the rotor)
   //   field(ctx)    → { mesh, anchor, label?, update(state) }
   //   blur(ctx)     → { mesh, update(state) } (does not turn)
+  // Every physical part marks its objects with helpers.piece(obj, meta) for the exploded view; the field ring and the blur are not pieces.
   const DEFAULT_PARTS = {
-    stator: (ctx) => new T.Mesh(helpers.slottedCore(ctx, ctx.g.Ri, ctx.g.Rs, ctx.g.Ro, ctx.kept), helpers.stdMat(PALETTE.steel, 0.55, 0.42)),
+    stator: (ctx) =>
+      helpers.piece(new T.Mesh(helpers.slottedCore(ctx, ctx.g.Ri, ctx.g.Rs, ctx.g.Ro, ctx.kept), helpers.stdMat(PALETTE.steel, 0.55, 0.42)), PIECES.stator(ctx)),
     windings: buildWindings,
     housing: buildHousing,
     shaft: buildShaft,
@@ -541,6 +638,21 @@
     ];
     if (built.winding.anchor) labels.splice(1, 0, { text: 'Three-phase winding (slot conductors + end turns)', pos: built.winding.anchor });
     return labels;
+  }
+
+  // The pieces of the exploded view, in the order they were built: { id, name, objects, dir (unit Vector3), dist, info }
+  function collectPieces(root) {
+    const byId = new Map();
+    root.traverse((o) => {
+      const meta = o.userData.explode;
+      if (!meta) return;
+      if (!byId.has(meta.id)) {
+        const d = new T.Vector3().fromArray(meta.dir).normalize();
+        byId.set(meta.id, Object.assign({ step: 1 }, meta, { dir: d, objects: [] }));
+      }
+      byId.get(meta.id).objects.push(o);
+    });
+    return [...byId.values()];
   }
 
   function build(rawSpec, rawView) {
@@ -579,6 +691,7 @@
 
     const labels = (def.labels || defaultLabels)(ctx, { winding, field });
     (rotorImpl.labels || []).forEach((l) => labels.push(l));
+    const pieces = collectPieces(root);
 
     const fadeMats = rotorImpl.fadeMats || [];
     return {
@@ -586,6 +699,7 @@
       view,
       root,
       labels,
+      pieces,
       polePairs: g.p,
       synchronous: !!def.synchronous,
       update(st) {
@@ -624,6 +738,7 @@
     keptRange,
     layouts: { inner: INNER_LAYOUT },
     parts: DEFAULT_PARTS,
+    pieces: PIECES,
     palette: PALETTE,
     helpers,
     registry,

@@ -30,7 +30,32 @@
       const group = new T.Group();
 
       const coreMat = H.stdMat(P.steelDark, 0.6, 0.45);
-      group.add(new T.Mesh(H.cyl(g.Rr - t, Lr, 96), coreMat));
+      group.add(
+        H.piece(new T.Mesh(H.cyl(g.Rr - t, Lr, 96), coreMat), {
+          id: 'rotorCore',
+          name: 'Rotor core (yoke)',
+          dir: [0, 0, 1],
+          dist: g.xNear,
+          info: {
+            role: 'Steel under the magnets that carries their flux from one pole to the next.',
+            material: 'Steel, solid or laminated',
+            facts: [],
+          },
+        })
+      );
+      const magnets = H.piece(new T.Group(), {
+        id: 'magnets',
+        name: 'Permanent magnets (on the surface)',
+        dir: [0, 0, 1],
+        dist: g.xFar,
+        step: 2,
+        info: {
+          role: 'N and S magnets on the rotor surface make the rotor field by themselves, so the rotor turns exactly in step with the rotating field: no slip, and no current in the rotor. The field leads the rotor by the load angle; the larger the angle, the larger the torque.',
+          material: 'Neodymium-iron-boron (NdFeB), glued on and often held by a bandage at high speed',
+          facts: [spec.poles + ' magnets, ' + spec.poles / 2 + ' N and ' + spec.poles / 2 + ' S', 'They cover ' + Math.round(spec.magnetCoverage * 100) + '% of each pole pitch'],
+        },
+      });
+      group.add(magnets);
 
       const northMat = H.stdMat(P.north, 0.35, 0.45);
       const southMat = H.stdMat(P.south, 0.35, 0.45);
@@ -42,12 +67,12 @@
       for (let i = 0; i < spec.poles; i++) {
         const c = i * pitch; // magnet 0 (N) faces the 0° direction of the rotor
         const north = i % 2 === 0;
-        group.add(new T.Mesh(H.ring(g.Rr, g.Rr - t, c - halfWidth, c + halfWidth, Lr), north ? northMat : southMat));
+        magnets.add(new T.Mesh(H.ring(g.Rr, g.Rr - t, c - halfWidth, c + halfWidth, Lr), north ? northMat : southMat));
         const decal = new T.Mesh(new T.PlaneGeometry(size, size), north ? letterN : letterS);
         decal.position.set((g.Rr + 0.004) * Math.cos(c), (g.Rr + 0.004) * Math.sin(c), 0);
         decal.up.set(0, 0, 1);
         decal.lookAt(decal.position.x * 2, decal.position.y * 2, 0);
-        group.add(decal);
+        magnets.add(decal);
       }
 
       return {

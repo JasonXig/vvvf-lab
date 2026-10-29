@@ -127,7 +127,7 @@
   function initKeys() {
     const typing = (e) => /^(TEXTAREA|SELECT)$/.test(e.target.tagName) || (e.target.tagName === 'INPUT' && !['range', 'checkbox', 'button'].includes(e.target.type));
     window.addEventListener('keydown', (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || typing(e)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || typing(e) || S.explode) return; // the exploded view freezes the train: no controller keys
       let handled = true;
       switch (e.code) {
         case 'ArrowUp':

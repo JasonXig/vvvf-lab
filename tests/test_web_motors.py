@@ -91,6 +91,67 @@ def test_each_layout_has_only_its_own_dimensions(js):
     assert {"statorRadius", "statorInnerRadius", "outerRadius"} <= set(keys["outer-rotor"])
 
 
+INNER_PIECES = ["stator", "winding", "shaft", "rotorCore", "{rotor}", "housing", "endBack", "endFront"]
+
+
+def test_exploded_view_pieces_cover_every_part(js):
+    # Every physical mesh belongs to exactly one piece of the exploded view (only the field ring and the blur shell are not parts),
+    # so a new motor type cannot forget a part; and a piece is never inside another piece
+    for b in js["builds"]:
+        x = b["explode"]
+        assert x["untagged"] == 0, f"{b['name']}: {x['untagged']} meshes are not in any piece"
+        assert x["nested"] == 0, f"{b['name']}: a piece inside another piece"
+        ids = [p["id"] for p in x["pieces"]]
+        assert len(ids) == len(set(ids))
+
+
+@pytest.mark.parametrize("motor_type, rotor_piece", [("induction", "cage"), ("pmsm", "magnets"), ("ipmsm", "magnets")])
+def test_inner_rotor_pieces(js, motor_type, rotor_piece):
+    for b in builds_of(js, motor_type):
+        ids = [p["id"] for p in b["explode"]["pieces"]]
+        assert ids == [rotor_piece if i == "{rotor}" else i for i in INNER_PIECES], b["name"]
+
+
+def test_outer_rotor_pieces(js):
+    for b in builds_of(js, "outer-rotor"):
+        pieces = {p["id"]: p for p in b["explode"]["pieces"]}
+        assert list(pieces) == ["stator", "winding", "drum", "magnets", "spindle"]
+        assert pieces["spindle"]["dist"] == 0, "the spindle is the fixed part"
+        assert pieces["drum"]["objects"] == 2, "the hub and markers come off with the drum"
+        assert pieces["drum"]["dir"] == [0, 0, 1] and pieces["stator"]["dir"] == [0, 0, -1]
+
+
+def test_exploded_view_paths_and_cards(js):
+    for b in js["builds"]:
+        pieces = b["explode"]["pieces"]
+        assert sum(p["dist"] == 0 for p in pieces) == 1, f"{b['name']}: exactly one piece stays put, the others come off it"
+        for p in pieces:
+            assert math.isclose(math.hypot(*p["dir"]), 1.0, abs_tol=1e-9)
+            assert 0 <= p["dist"] < 6 and p["step"] in (0, 1, 2)
+            assert p["name"] and len(p["info"]["role"]) > 40 and p["info"]["material"], f"{b['name']} / {p['id']}: the card needs a name, a role and a material"
+            assert isinstance(p["info"]["facts"], list) and all(isinstance(f, str) and f for f in p["info"]["facts"])
+        # what comes off first (step 0) goes further than what is inside it, so the covers are out of the way
+        by_id = {p["id"]: p for p in pieces}
+        if "endFront" in by_id:
+            assert by_id["endFront"]["dist"] > by_id[next(i for i in ("cage", "magnets") if i in by_id)]["dist"] > by_id["rotorCore"]["dist"]
+
+
+def test_exploded_view_cards_use_the_motor_definition(js):
+    ind = next(b for b in js["builds"] if b["name"] == "induction (default)" and b["cutaway"])
+    cards = {p["id"]: p["info"] for p in ind["explode"]["pieces"]}
+    assert cards["stator"]["facts"][0] == "36 slots"
+    assert cards["stator"]["facts"][1].startswith("3 slots per pole per phase")
+    assert cards["cage"]["facts"][0].startswith("28 bars against 36 stator slots")
+    assert "cannot be pulled out" in cards["cage"]["note"], "the card says where the exploded view is not literal"
+    # 100 km/h with the 0.86 m wheel and gear ratio 5.6: written out independently
+    rpm = round(100 / 3.6 / (math.pi * 0.86) * 5.6 * 60)
+    assert cards["shaft"]["facts"][0].startswith(f"At 100 km/h it turns at {rpm} rpm")
+    outer = next(b for b in js["builds"] if b["name"] == "outer-rotor (default)" and b["cutaway"])
+    cards = {p["id"]: p["info"] for p in outer["explode"]["pieces"]}
+    assert cards["drum"]["facts"][0] == f"Direct drive (gear ratio 1): {round(100 / 3.6 / (math.pi * 0.86) * 60)} rpm at 100 km/h"
+    assert cards["magnets"]["facts"][0].startswith("16 magnets, so the rotor turns once every 8 cycles")
+
+
 @pytest.mark.parametrize(
     "key, words",
     [
