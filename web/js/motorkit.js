@@ -267,6 +267,17 @@
       obj.userData.explode = meta;
       return obj;
     },
+    // The conductors of a distributed three-phase winding, one per slot in the range kept: [{ angle, ph, s }], s = +1 or -1 the polarity of its belt
+    slotPhases(g, kept) {
+      const slots = [];
+      for (let k = kept.k0; k < kept.k1; k++) {
+        const km = ((k % g.Z) + g.Z) % g.Z;
+        const belt = Math.floor(((km + 0.5) / g.Z) * 6 * g.p) % (6 * g.p);
+        const cfg = BELTS[belt % 6];
+        slots.push({ angle: (k + 0.5) * g.delta, ph: cfg.ph, s: cfg.s });
+      }
+      return slots;
+    },
     // Rotor speed [rpm] at a vehicle speed, for the info cards
     rpmAt(spec, kmh) {
       return Math.round(NS.Drive.compute(kmh, 2, true, spec.drivetrain).nr);
@@ -368,13 +379,7 @@
     const { g, kept, view } = ctx;
     const group = helpers.piece(new T.Group(), PIECES.winding(ctx));
     const p = g.p;
-    const slots = [];
-    for (let k = kept.k0; k < kept.k1; k++) {
-      const km = ((k % g.Z) + g.Z) % g.Z;
-      const belt = Math.floor(((km + 0.5) / g.Z) * 6 * p) % (6 * p);
-      const cfg = BELTS[belt % 6];
-      slots.push({ angle: (k + 0.5) * g.delta, ph: cfg.ph, s: cfg.s });
-    }
+    const slots = helpers.slotPhases(g, kept);
 
     const slotW = (1 - ctx.spec.toothFraction) * g.delta * g.rMid;
     const rodGeo = new T.BoxGeometry(g.slotDepth * 0.6, slotW * 0.66, g.L + 0.14);
@@ -497,11 +502,12 @@
   function buildShaft(ctx) {
     const { g } = ctx;
     const group = helpers.piece(new T.Group(), PIECES.shaft(ctx));
-    group.add(new T.Mesh(helpers.cyl(g.Rsh, 2 * (g.endZ + 0.62), 48), helpers.stdMat(PALETTE.shaft, 0.85, 0.28)));
+    const stub = g.shaftStub || 0.62; // how far it stands out beyond the end shields
+    group.add(new T.Mesh(helpers.cyl(g.Rsh, 2 * (g.endZ + stub), 48), helpers.stdMat(PALETTE.shaft, 0.85, 0.28)));
     const markMat = new T.MeshStandardMaterial({ color: PALETTE.marker, emissive: PALETTE.marker, emissiveIntensity: 0.5, roughness: 0.5 });
     [-1, 1].forEach((sg) => {
       const mark = new T.Mesh(new T.BoxGeometry(0.06, 0.06, 0.28), markMat);
-      mark.position.set(g.Rsh + 0.02, 0, sg * (g.endZ + 0.46));
+      mark.position.set(g.Rsh + 0.02, 0, sg * (g.endZ + stub - 0.16));
       group.add(mark);
     });
     return group;
@@ -509,19 +515,26 @@
 
   // ---- Air-gap field: a colour ring cos(p·(θ − φ)) around the circumference, following the rotating field ----
   const FIELD_VERT = 'varying vec3 vPos;\nvoid main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
-  const FIELD_FRAG = [
-    'uniform float uP; uniform float uPhi; uniform float uAmp; uniform float uHalf;',
-    'uniform vec3 uN; uniform vec3 uS; varying vec3 vPos;',
-    'void main(){',
-    '  float ang = atan(vPos.y, vPos.x);',
-    '  float b = cos(uP * (ang - uPhi));',
-    '  vec3 col = mix(uS, uN, 0.5 + 0.5 * b);',
-    '  float edge = 1.0 - smoothstep(0.75, 1.0, abs(vPos.z) / uHalf);',
-    '  float a = uAmp * (0.08 + 0.42 * abs(b)) * edge;',
-    '  gl_FragColor = vec4(col, a);',
-    '  #include <colorspace_fragment>',
-    '}',
-  ].join('\n');
+  // The fade at the ends of a ring: along the axis on a cylinder, along the radius on a flat ring (an axial-flux air gap)
+  const RING_EDGE = {
+    cylinder: (from) => ({ decl: 'uniform float uHalf;', expr: '1.0 - smoothstep(' + from + ', 1.0, abs(vPos.z) / uHalf)' }),
+    flat: () => ({ decl: 'uniform float uRi; uniform float uRo;', expr: 'smoothstep(uRi, uRi + 0.05, length(vPos.xy)) * (1.0 - smoothstep(uRo - 0.05, uRo, length(vPos.xy)))' }),
+  };
+  const fieldFrag = (edge, base, swing) =>
+    [
+      'uniform float uP; uniform float uPhi; uniform float uAmp;',
+      edge.decl,
+      'uniform vec3 uN; uniform vec3 uS; varying vec3 vPos;',
+      'void main(){',
+      '  float ang = atan(vPos.y, vPos.x);',
+      '  float b = cos(uP * (ang - uPhi));',
+      '  vec3 col = mix(uS, uN, 0.5 + 0.5 * b);',
+      '  float edge = ' + edge.expr + ';',
+      '  float a = uAmp * (' + base + ' + ' + swing + ' * abs(b)) * edge;',
+      '  gl_FragColor = vec4(col, a);',
+      '  #include <colorspace_fragment>',
+      '}',
+    ].join('\n');
 
   function buildField(ctx) {
     const { g, view } = ctx;
@@ -537,7 +550,7 @@
         uS: { value: new T.Color(PALETTE.south) },
       },
       vertexShader: FIELD_VERT,
-      fragmentShader: FIELD_FRAG,
+      fragmentShader: fieldFrag(RING_EDGE.cylinder('0.75'), '0.08', '0.42'),
       transparent: true,
       depthWrite: false,
       side: T.DoubleSide,
@@ -560,19 +573,21 @@
   }
 
   // ---- Speed "blur" shell: the rotor blurs when it spins fast, and the blur colour follows the speed ----
-  const BLUR_FRAG = [
-    'uniform float uBlur; uniform float uPhase; uniform float uHalf; uniform vec3 uColor; varying vec3 vPos;',
-    'void main(){',
-    '  float x = atan(vPos.y, vPos.x) / 6.2831853 + 0.5 + uPhase;',
-    '  float s1 = 0.5 + 0.5 * sin(x * 6.2831853 * 23.0 + 2.0 * sin(x * 6.2831853 * 5.0));',
-    '  float s2 = 0.5 + 0.5 * sin(x * 6.2831853 * 41.0 + 1.7);',
-    '  float s = pow(s1 * s2, 1.5);',
-    '  float edge = 1.0 - smoothstep(0.7, 1.0, abs(vPos.z) / uHalf);',
-    '  float a = uBlur * (0.16 + 0.62 * s) * edge;',
-    '  gl_FragColor = vec4(uColor, a);',
-    '  #include <colorspace_fragment>',
-    '}',
-  ].join('\n');
+  const blurFrag = (edge) =>
+    [
+      'uniform float uBlur; uniform float uPhase; uniform vec3 uColor; varying vec3 vPos;',
+      edge.decl,
+      'void main(){',
+      '  float x = atan(vPos.y, vPos.x) / 6.2831853 + 0.5 + uPhase;',
+      '  float s1 = 0.5 + 0.5 * sin(x * 6.2831853 * 23.0 + 2.0 * sin(x * 6.2831853 * 5.0));',
+      '  float s2 = 0.5 + 0.5 * sin(x * 6.2831853 * 41.0 + 1.7);',
+      '  float s = pow(s1 * s2, 1.5);',
+      '  float edge = ' + edge.expr + ';',
+      '  float a = uBlur * (0.16 + 0.62 * s) * edge;',
+      '  gl_FragColor = vec4(uColor, a);',
+      '  #include <colorspace_fragment>',
+      '}',
+    ].join('\n');
 
   // opt: { radius, half, a0, a1 } (default: just outside the inner rotor, full circle). The shell does not turn, so an outer rotor
   // that is cut away passes the kept angles a0..a1 (counter-clockwise) and gets a shell with the notch left open.
@@ -591,7 +606,7 @@
         uColor: { value: new T.Color(0x66aaff) },
       },
       vertexShader: FIELD_VERT,
-      fragmentShader: BLUR_FRAG,
+      fragmentShader: blurFrag(RING_EDGE.cylinder('0.7')),
       transparent: true,
       depthWrite: false,
       side: T.DoubleSide,
@@ -751,6 +766,7 @@
     layouts: { inner: INNER_LAYOUT },
     parts: DEFAULT_PARTS,
     pieces: PIECES,
+    shaders: { vert: FIELD_VERT, fieldFrag, blurFrag, ringEdge: RING_EDGE }, // for a part that draws its field or blur on another shape
     palette: PALETTE,
     helpers,
     registry,

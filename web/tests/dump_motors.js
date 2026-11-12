@@ -129,6 +129,8 @@ const bad = {
   innerShaftTooBig: { type: 'induction', shaftRadius: 0.5 },
   oddPoles: { type: 'outer-rotor', poles: 15 },
   loadAngleTooBig: { type: 'outer-rotor', loadAngleDeg: 120 },
+  axialTooNarrow: { type: 'axial-flux', innerRadius: 0.95 },
+  axialShaftTooBig: { type: 'axial-flux', shaftRadius: 0.55 },
   unknownType: { type: 'no-such-type' },
 };
 for (const key of Object.keys(bad)) {

@@ -104,11 +104,11 @@
       );
       piece.mats = [...copies.values()].filter((m) => m.emissive);
       piece.mats.forEach((m) => (m.userData.emissive = { color: m.emissive.clone(), intensity: m.emissiveIntensity }));
-      // label anchor: the top of the piece, in motor coordinates
+      // label anchor, in motor coordinates: the top of the piece, or just below it (labelBelow) where pieces stand close together in a row
       const box = new T.Box3();
       p.objects.forEach((o) => box.expandByObject(o, true));
       const c = box.getCenter(new T.Vector3());
-      piece.anchor = new T.Vector3(c.x, box.max.y, c.z);
+      piece.anchor = new T.Vector3(c.x, p.labelBelow ? box.min.y - 0.22 : box.max.y, c.z);
       piece.pos = piece.anchor.clone();
       return piece;
     });

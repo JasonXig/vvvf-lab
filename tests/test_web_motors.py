@@ -25,7 +25,7 @@ def builds_of(js, motor_type):
 
 def test_every_type_and_preset_builds(js):
     types = {t["type"] for t in js["types"]}
-    assert {"induction", "pmsm", "ipmsm", "outer-rotor"} <= types
+    assert {"induction", "pmsm", "ipmsm", "outer-rotor", "axial-flux"} <= types
     for t in types:
         assert len(builds_of(js, t)) >= 2, f"{t}: the default and each preset, with the cut-away on and off"
     for b in js["builds"]:
@@ -39,7 +39,7 @@ def test_motors_fit_the_camera_framing(js):
     # The camera frames each motor by its bounding sphere; keep every type within the size the layout and labels were designed for
     for b in js["builds"]:
         assert 0.9 < b["rMaxXY"] < 1.2, b["name"]
-        assert 1.2 < b["zMax"] < 2.0, b["name"]
+        assert 0.8 < b["zMax"] < 2.0, b["name"]
 
 
 def test_inner_rotor_types_are_cut_in_their_geometry(js):
@@ -97,6 +97,8 @@ def field_angle_from_slots(winding, currents, pole_pairs, sense):
     Ampere around a loop through the gap and the iron: the field across the gap changes by the current enclosed, dH/dθ = -K/g for a
     conductor sheet K along +Z, wherever the conductors are. With K(θ) ≈ A cos(pθ - α), the outward field H peaks at pθ = α - 90°.
     An inner rotor counts outwards from rotor to stator (sense +1), an outer rotor inwards (sense -1).
+    Axial flux: positive current runs radially outwards across the front face, the same loop through the front gap gives dHz/dθ = +K/g,
+    and rotor to stator is towards -Z there, so it peaks at pθ = α - 90° as well (sense +1).
     """
     a = b = 0.0
     for slot in winding["slots"]:
@@ -108,7 +110,7 @@ def field_angle_from_slots(winding, currents, pole_pairs, sense):
     return outward if sense > 0 else outward + 180
 
 
-FIELD_SENSE = {"induction": 1, "pmsm": 1, "ipmsm": 1, "outer-rotor": -1}
+FIELD_SENSE = {"induction": 1, "pmsm": 1, "ipmsm": 1, "outer-rotor": -1, "axial-flux": 1}
 
 
 def test_winding_currents_put_the_stator_field_where_asked(js):
@@ -162,6 +164,37 @@ def test_outer_rotor_pieces(js):
         assert pieces["drum"]["dir"] == [0, 0, 1] and pieces["stator"]["dir"] == [0, 0, -1]
 
 
+def test_axial_flux_pieces(js):
+    for b in builds_of(js, "axial-flux"):
+        pieces = {p["id"]: p for p in b["explode"]["pieces"]}
+        assert list(pieces) == ["stator", "winding", "shaft", "discFront", "magnetsFront", "discBack", "magnetsBack", "housing", "endBack", "endFront"]
+        assert pieces["stator"]["dist"] == 0
+        # the stack comes apart along the axis, symmetrically: magnets first, then the discs further out, then the end shields
+        for side, sign in (("Front", 1), ("Back", -1)):
+            assert pieces["disc" + side]["dir"] == [0, 0, sign] and pieces["magnets" + side]["dir"] == [0, 0, sign]
+            assert pieces["magnets" + side]["dist"] < pieces["disc" + side]["dist"] < pieces["end" + side]["dist"]
+        assert "cannot be lifted off" in pieces["winding"]["info"]["note"]
+
+
+def test_axial_flux_is_cut_through_the_front_disc_only(js):
+    # The notch goes through the front disc and its magnets, which turn: clipping planes on one disc and one set of magnets; stator and back disc stay whole
+    for b in builds_of(js, "axial-flux"):
+        assert b["clipped"] == (b["spec"]["poles"] + 1 if b["cutaway"] else 0), b["name"]
+
+
+def test_axial_flux_defaults(js):
+    b = next(b for b in js["builds"] if b["name"] == "axial-flux (default)" and b["cutaway"])
+    s = b["spec"]
+    assert b["synchronous"] and b["polePairs"] == 8 and s["drivetrain"]["gearRatio"] == 1, "a direct drive"
+    assert s["innerRadius"] / s["outerRadius"] == pytest.approx(1 / math.sqrt(3), abs=0.01), "the ratio that gives the most torque when current is limited at the inner radius"
+    cards = {p["id"]: p["info"] for p in b["explode"]["pieces"]}
+    assert cards["stator"]["facts"][0].startswith("48 slots on each face, 1 per pole per phase")
+    assert cards["magnetsFront"]["facts"][0].startswith("16 magnets on this disc, so the rotor turns once every 8 cycles")
+    assert cards["shaft"]["facts"][0] == f"Direct drive (gear ratio 1): {round(100 / 3.6 / (math.pi * 0.86) * 60)} rpm at 100 km/h"
+    # a pancake: much wider than it is long, not counting the short shaft ends
+    assert s["yokeThickness"] + 2 * (s["slotDepth"] + s["airGap"] + s["magnetThickness"] + s["discThickness"]) < s["outerRadius"]
+
+
 def test_exploded_view_paths_and_cards(js):
     for b in js["builds"]:
         pieces = b["explode"]["pieces"]
@@ -173,7 +206,7 @@ def test_exploded_view_paths_and_cards(js):
             assert isinstance(p["info"]["facts"], list) and all(isinstance(f, str) and f for f in p["info"]["facts"])
         # what comes off first (step 0) goes further than what is inside it, so the covers are out of the way
         by_id = {p["id"]: p for p in pieces}
-        if "endFront" in by_id:
+        if "rotorCore" in by_id:
             assert by_id["endFront"]["dist"] > by_id[next(i for i in ("cage", "magnets") if i in by_id)]["dist"] > by_id["rotorCore"]["dist"]
 
 
@@ -203,6 +236,8 @@ def test_exploded_view_cards_use_the_motor_definition(js):
         ("innerShaftTooBig", "rotor will not fit"),
         ("oddPoles", "even number"),
         ("loadAngleTooBig", "electrical degrees"),
+        ("axialTooNarrow", "active ring is too narrow"),
+        ("axialShaftTooBig", "below innerRadius"),
         ("unknownType", "outer-rotor"),
     ],
 )
