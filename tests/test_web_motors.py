@@ -91,6 +91,47 @@ def test_each_layout_has_only_its_own_dimensions(js):
     assert {"statorRadius", "statorInnerRadius", "outerRadius"} <= set(keys["outer-rotor"])
 
 
+def field_angle_from_slots(winding, currents, pole_pairs, sense):
+    """Electrical angle of the stator's field from the slot currents, counted from rotor into stator; independent of the page's own calculation.
+
+    Ampere around a loop through the gap and the iron: the field across the gap changes by the current enclosed, dH/dθ = -K/g for a
+    conductor sheet K along +Z, wherever the conductors are. With K(θ) ≈ A cos(pθ - α), the outward field H peaks at pθ = α - 90°.
+    An inner rotor counts outwards from rotor to stator (sense +1), an outer rotor inwards (sense -1).
+    """
+    a = b = 0.0
+    for slot in winding["slots"]:
+        k = slot["s"] * currents[slot["ph"]]
+        a += k * math.cos(pole_pairs * slot["angle"])
+        b += k * math.sin(pole_pairs * slot["angle"])
+    assert math.hypot(a, b) > 1
+    outward = math.degrees(math.atan2(b, a)) - 90
+    return outward if sense > 0 else outward + 180
+
+
+FIELD_SENSE = {"induction": 1, "pmsm": 1, "ipmsm": 1, "outer-rotor": -1}
+
+
+def test_winding_currents_put_the_stator_field_where_asked(js):
+    checked = 0
+    for b in js["builds"]:
+        if b["cutaway"] or b["type"] not in FIELD_SENSE:
+            continue
+        w = b["winding"]
+        assert len(w["slots"]) == b["spec"]["statorSlots"]
+        for theta, currents in zip(w["thetas"], w["currents"]):
+            angle = field_angle_from_slots(w, currents, b["polePairs"], FIELD_SENSE[b["type"]])
+            assert abs((angle - theta + 180) % 360 - 180) < 1.0, f"{b['name']}: asked for {theta}, got {angle:.1f}"
+            checked += 1
+    assert checked >= 20
+
+
+def test_load_angles_stay_below_the_pull_out_limit(js):
+    # Past 90 electrical degrees a surface-magnet motor loses torque; the defaults and presets all stay below that
+    for b in js["builds"]:
+        if b["synchronous"]:
+            assert 0 < b["spec"]["loadAngleDeg"] < 90, b["name"]
+
+
 INNER_PIECES = ["stator", "winding", "shaft", "rotorCore", "{rotor}", "housing", "endBack", "endFront"]
 
 
@@ -161,6 +202,7 @@ def test_exploded_view_cards_use_the_motor_definition(js):
         ("outerDrumTooThin", "drum is too thin"),
         ("innerShaftTooBig", "rotor will not fit"),
         ("oddPoles", "even number"),
+        ("loadAngleTooBig", "electrical degrees"),
         ("unknownType", "outer-rotor"),
     ],
 )

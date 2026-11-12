@@ -99,5 +99,33 @@
     return clamp(v + a * dt, 0, d.maxSpeed);
   }
 
-  NS.Drive = { DEFAULT_DRIVE, DEFAULT_DYN, NOTCHES, NOTCH_N, notchIndex, effectiveMode, torqueLoad, inverterRun, compute, stepSpeed };
+  // ---- What the 3D view draws: where the fields sit relative to the rotor --------------------------
+  // Synchronous motor: the air-gap field leads the rotor (power) or lags it (braking) by the load angle, loadAngleDeg electrical degrees
+  // near full torque (past 90 degrees a surface-magnet motor loses torque and falls out of step). Returns the lead in mechanical radians.
+  function fieldLead(loadAngleDeg, polePairs, braking, load) {
+    const electrical = ((loadAngleDeg * Math.PI) / 180) * Math.min(1, load * 1.2);
+    return (braking ? -electrical : electrical) / polePairs;
+  }
+
+  // tan(angle between stator field and air-gap field) = torque current / magnetizing current at full torque for an induction motor.
+  // 1.6 corresponds to a power factor of about 0.85; a demo assumption until P2 computes it.
+  const TORQUE_CURRENT_RATIO = 1.6;
+
+  // Electrical angle at which the stator currents should put the stator's own field (radians).
+  // PM motor with no field weakening (i_d = 0): 90 degrees ahead of the rotor's poles under power, 90 behind when braking.
+  // Induction motor: the magnetizing current lines up with the air-gap field and the torque current is at right angles to it,
+  // so the stator field leads the air-gap field under power, lags it when braking, and sits on it in neutral.
+  function statorFieldAngle(synchronous, rotorElectrical, airGapElectrical, braking, load) {
+    const sign = braking ? -1 : 1;
+    if (synchronous) return rotorElectrical + (sign * Math.PI) / 2;
+    return airGapElectrical + sign * Math.atan(TORQUE_CURRENT_RATIO * load);
+  }
+
+  // Size of the winding currents from the inverter output (0.3 in neutral, 1 at full torque): an induction motor needs its magnetizing current
+  // all the time; the magnets of a PM motor make the field by themselves, so with no torque there is hardly any current.
+  function windingCurrent(synchronous, power) {
+    return synchronous ? clamp((power - 0.3) / 0.7, 0, 1) : power;
+  }
+
+  NS.Drive = { DEFAULT_DRIVE, DEFAULT_DYN, NOTCHES, NOTCH_N, notchIndex, effectiveMode, torqueLoad, inverterRun, compute, stepSpeed, fieldLead, statorFieldAngle, windingCurrent };
 })((window.VVVF3D = window.VVVF3D || {}));

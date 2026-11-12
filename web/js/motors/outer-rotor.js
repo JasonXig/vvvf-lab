@@ -16,6 +16,9 @@
   // Radii from the axis outwards: spindle Rsh < stator support < stator inner radius Rsi < slot bottoms Rs < tooth tips Rso
   //   < air gap < magnet face Rm < inside of the drum (Rm + magnetThickness) < outside of the drum Ro
   const OUTER_LAYOUT = {
+    // The stator is on the other side of the gap, but the same currents make the same field in the gap (Ampere's law does not care which side
+    // the conductors are on). The ring counts from rotor into stator, which is inwards here, so the field in that sense is half a period away from the inner-rotor case.
+    windingPhase: (-2 * Math.PI) / 3,
     defaults: {
       length: 1.2, // core length
       outerRadius: 1.0, // outer radius of the rotor drum, i.e. of the whole motor
@@ -179,15 +182,15 @@
     synchronous: true,
     layout: OUTER_LAYOUT,
     parts,
-    defaults: { poles: 16, statorSlots: 48, magnetCoverage: 0.8, magnetThickness: 0.06, loadAngleDeg: 18, drivetrain: { gearRatio: 1 } },
+    defaults: { poles: 16, statorSlots: 48, magnetCoverage: 0.8, magnetThickness: 0.06, loadAngleDeg: 60, drivetrain: { gearRatio: 1 } },
     presets: {
-      'Outer rotor · 16 poles · 48 slots · direct drive': { poles: 16, statorSlots: 48, magnetCoverage: 0.8, magnetThickness: 0.06, loadAngleDeg: 18 },
-      'Outer rotor · 12 poles · 36 slots · direct drive': { poles: 12, statorSlots: 36, magnetCoverage: 0.82, magnetThickness: 0.07, loadAngleDeg: 20 },
+      'Outer rotor · 16 poles · 48 slots · direct drive': { poles: 16, statorSlots: 48, magnetCoverage: 0.8, magnetThickness: 0.06, loadAngleDeg: 60 },
+      'Outer rotor · 12 poles · 36 slots · direct drive': { poles: 12, statorSlots: 36, magnetCoverage: 0.82, magnetThickness: 0.07, loadAngleDeg: 60 },
     },
     validate(s, need, num) {
       num(s, 'magnetCoverage', 0.4, 0.95, 'Magnet coverage');
       num(s, 'magnetThickness', 0.02, 0.2, 'Magnet thickness');
-      num(s, 'loadAngleDeg', -60, 60, 'Load angle (deg)');
+      num(s, 'loadAngleDeg', -85, 85, 'Load angle (electrical degrees)');
       need(s.statorRadius + s.airGap + s.magnetThickness < s.outerRadius - 0.05, 'The drum is too thin: outerRadius must be at least 0.05 above statorRadius + airGap + magnetThickness');
     },
 

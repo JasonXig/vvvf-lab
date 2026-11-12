@@ -77,6 +77,35 @@ def test_js_drive_model_matches_independent_formulas(js):
         assert d["slip"] == pytest.approx(fs / f1 if f1 > 0 else 0.0)
 
 
+def test_load_angle_is_in_electrical_degrees(js):
+    for d in js["fieldLead"]:
+        electrical = math.radians(d["a"]) * min(1.0, 1.2 * d["l"])
+        assert d["lead"] * d["p"] == pytest.approx(-electrical if d["b"] else electrical)
+    assert js["fieldLead"][3]["lead"] == 0, "no torque, no load angle"
+
+
+def test_stator_field_angle_from_the_torque_direction(js):
+    rotor, air_gap = 0.4, 1.1  # the electrical angles dump_logic.js passes in
+    for d in js["statorField"]:
+        sign = -1 if d["braking"] else 1
+        if d["synchronous"]:
+            # no field weakening: always a quarter period from the rotor's poles, ahead under power, behind when braking
+            assert d["angle"] == pytest.approx(rotor + sign * math.pi / 2)
+        else:
+            # magnetizing current along the air-gap field, torque current at right angles to it
+            assert d["angle"] == pytest.approx(air_gap + sign * math.atan(1.6 * d["load"]))
+    neutral = [d for d in js["statorField"] if not d["synchronous"] and d["load"] == 0]
+    assert all(d["angle"] == pytest.approx(air_gap) for d in neutral), "an induction motor in neutral: only magnetizing current"
+
+
+def test_winding_current_size(js):
+    amp = {(d["synchronous"], d["power"]): d["amp"] for d in js["windingCurrent"]}
+    assert amp[(True, 0.3)] == 0, "a PM motor in neutral needs no current: the magnets make the field"
+    assert amp[(True, 0)] == 0 and amp[(True, 1)] == pytest.approx(1)
+    assert amp[(True, 0.65)] == pytest.approx(0.5)
+    assert amp[(False, 0.3)] == 0.3 and amp[(False, 1)] == 1, "an induction motor always needs its magnetizing current"
+
+
 def test_js_overmodulation_conversions_equal_python(js):
     from vvvflab.pwm import fundamental_from_reference, reference_for_fundamental
 

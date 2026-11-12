@@ -105,6 +105,10 @@ for (const { name, spec } of specs) {
         polePairs: m.polePairs,
         synchronous: m.synchronous,
         spec: m.spec,
+        // Currents for a few stator-field angles, with the slots they flow in (only with every slot present)
+        winding: cutaway
+          ? null
+          : { slots: m.windingSlots, thetas: [0, 37, 123, 250], currents: [0, 37, 123, 250].map((deg) => m.currents((deg * Math.PI) / 180, 1)) },
         labels: m.labels.map((l) => ({ text: l.text, finite: [l.pos.x, l.pos.y, l.pos.z].every(isFinite) })),
       });
       m.dispose();
@@ -124,6 +128,7 @@ const bad = {
   outerDrumTooThin: { type: 'outer-rotor', magnetThickness: 0.2 },
   innerShaftTooBig: { type: 'induction', shaftRadius: 0.5 },
   oddPoles: { type: 'outer-rotor', poles: 15 },
+  loadAngleTooBig: { type: 'outer-rotor', loadAngleDeg: 120 },
   unknownType: { type: 'no-such-type' },
 };
 for (const key of Object.keys(bad)) {

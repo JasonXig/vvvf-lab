@@ -12,15 +12,15 @@
   K.register('ipmsm', {
     label: 'Permanent-magnet synchronous motor (interior V-shaped)',
     synchronous: true,
-    defaults: { poles: 8, statorSlots: 48, magnetWidth: 0.3, magnetThickness: 0.06, vAngleDeg: 35, loadAngleDeg: 25 },
+    defaults: { poles: 8, statorSlots: 48, magnetWidth: 0.3, magnetThickness: 0.06, vAngleDeg: 35, loadAngleDeg: 80 },
     presets: {
-      'Interior PM · 8 poles · 48 slots': { poles: 8, statorSlots: 48, magnetWidth: 0.3, magnetThickness: 0.06, vAngleDeg: 35, loadAngleDeg: 25 },
+      'Interior PM · 8 poles · 48 slots': { poles: 8, statorSlots: 48, magnetWidth: 0.3, magnetThickness: 0.06, vAngleDeg: 35, loadAngleDeg: 80 },
     },
     validate(s, need, num) {
       num(s, 'magnetWidth', 0.1, 0.5, 'Magnet width');
       num(s, 'magnetThickness', 0.02, 0.15, 'Magnet thickness');
       num(s, 'vAngleDeg', 10, 70, 'V angle (deg)');
-      num(s, 'loadAngleDeg', -60, 60, 'Load angle (deg)');
+      num(s, 'loadAngleDeg', -85, 85, 'Load angle (electrical degrees)');
     },
 
     buildRotor(ctx) {

@@ -12,15 +12,15 @@
   K.register('pmsm', {
     label: 'Permanent-magnet synchronous motor (surface-mounted)',
     synchronous: true,
-    defaults: { poles: 8, statorSlots: 48, magnetCoverage: 0.78, magnetThickness: 0.08, loadAngleDeg: 18 },
+    defaults: { poles: 8, statorSlots: 48, magnetCoverage: 0.78, magnetThickness: 0.08, loadAngleDeg: 70 },
     presets: {
-      'PM · 8 poles · 48 slots': { poles: 8, statorSlots: 48, magnetCoverage: 0.78, magnetThickness: 0.08, loadAngleDeg: 18 },
-      'PM · 4 poles · 36 slots': { poles: 4, statorSlots: 36, magnetCoverage: 0.8, magnetThickness: 0.09, loadAngleDeg: 20 },
+      'PM · 8 poles · 48 slots': { poles: 8, statorSlots: 48, magnetCoverage: 0.78, magnetThickness: 0.08, loadAngleDeg: 70 },
+      'PM · 4 poles · 36 slots': { poles: 4, statorSlots: 36, magnetCoverage: 0.8, magnetThickness: 0.09, loadAngleDeg: 40 },
     },
     validate(s, need, num) {
       num(s, 'magnetCoverage', 0.4, 0.95, 'Magnet coverage');
       num(s, 'magnetThickness', 0.02, 0.2, 'Magnet thickness');
-      num(s, 'loadAngleDeg', -60, 60, 'Load angle (deg)');
+      num(s, 'loadAngleDeg', -85, 85, 'Load angle (electrical degrees)');
     },
 
     buildRotor(ctx) {

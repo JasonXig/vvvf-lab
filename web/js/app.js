@@ -8,7 +8,6 @@
   const Table = NS.Table;
   const Drive = NS.Drive;
   const TAU = Math.PI * 2;
-  const DEG = Math.PI / 180;
   const MAX_SPEED = 160; // km/h
   const TABLES_KEY = 'vvvf3d.tables.v1';
   const $ = (id) => document.getElementById(id);
@@ -407,11 +406,10 @@
     S.rotor = (S.rotor + TAU * vr * dt) % TAU;
     S.slipAngle = (S.slipAngle + TAU * vs * dt) % TAU;
     // Induction motor: the field makes more (power) or fewer (braking) turns than the rotor by one slip; permanent-magnet motor: the field leads (power) or lags (braking) by one load angle, and there is none in neutral
-    const lead = (S.spec.loadAngleDeg || 0) * DEG * Math.min(1, load * 1.2);
-    const field = S.rotor + (m.synchronous ? (braking ? -lead : lead) : S.slipAngle);
-    const psi = p * field; // electrical angle
+    const field = S.rotor + (m.synchronous ? Drive.fieldLead(S.spec.loadAngleDeg || 0, p, braking, load) : S.slipAngle);
     const amp = S.power;
-    const currents = [Math.cos(psi) * amp, Math.cos(psi - TAU / 3) * amp, Math.cos(psi - (2 * TAU) / 3) * amp];
+    // The winding currents make the stator's own field, which is not where the air-gap field (the ring) is: see Drive.statorFieldAngle
+    const currents = m.currents(Drive.statorFieldAngle(m.synchronous, p * S.rotor, p * field, braking, load), Drive.windingCurrent(m.synchronous, amp));
     S.streak = (S.streak + Math.min(vr, 1.6) * dt) % 1;
     rpmColor(d.nr / S.rpmMax, speedColor);
     m.update({

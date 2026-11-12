@@ -151,4 +151,14 @@ out.nearest = [440, 261.63, 523.25, 450].map((f) => Object.assign({ f }, Table.n
   };
   out.scalePreset = presets.scale;
 }
+
+// What the 3D view draws: load angle, where the stator's field goes, how large the winding currents are
+out.fieldLead = [[60, 8, false, 1], [60, 8, true, 1], [60, 8, false, 0.25], [70, 4, false, 0], [40, 2, true, 0.5]].map(([a, p, b, l]) => ({ a, p, b, l, lead: Drive.fieldLead(a, p, b, l) }));
+out.statorField = [];
+for (const synchronous of [true, false]) {
+  for (const braking of [false, true]) {
+    for (const load of [0, 0.25, 1]) out.statorField.push({ synchronous, braking, load, angle: Drive.statorFieldAngle(synchronous, 0.4, 1.1, braking, load) });
+  }
+}
+out.windingCurrent = [[true, 0], [true, 0.3], [true, 0.65], [true, 1], [false, 0], [false, 0.3], [false, 1]].map(([synchronous, power]) => ({ synchronous, power, amp: Drive.windingCurrent(synchronous, power) }));
 console.log(JSON.stringify(out));

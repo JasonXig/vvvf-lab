@@ -85,8 +85,13 @@
   // A layout supplies the default dimensions, their checks, and the derived geometry g that the parts read.
   // The default is the classic inner rotor (radial flux, rotor inside the stator bore); a motor type with another
   // topology passes its own layout to register() (see js/motors/outer-rotor.js).
+  // windingPhase: how far (electrical radians) the phase-current angle is ahead of the stator's field made by those currents, the field being
+  // counted in the sense of the field ring (from rotor into stator). With the phase belts A+, C-, B+, A-, C+, B- the current sheet peaks 30 degrees
+  // past the current angle, and Ampere's law puts the outward field 90 degrees behind the sheet: 60 degrees behind in all.
+  // tests/test_web_motors.py checks this from the slots, independently, for every motor type.
   const INNER_LAYOUT = {
     defaults: COMMON_DEFAULTS,
+    windingPhase: Math.PI / 3,
     validate(s, need, num) {
       num(s, 'length', 0.4, 3, 'Core length');
       num(s, 'outerRadius', 0.5, 2, 'Stator outer radius');
@@ -429,6 +434,7 @@
     return {
       group,
       anchor,
+      slots,
       update(st) {
         group.visible = view.showWinding;
         const cur = st.currents;
@@ -702,6 +708,12 @@
       pieces,
       polePairs: g.p,
       synchronous: !!def.synchronous,
+      windingSlots: winding.slots,
+      // Per-unit phase currents [ia, ib, ic] that put the stator's field at electrical angle theta (in the sense of the field ring)
+      currents(theta, amp) {
+        const psi = theta + layoutOf(def).windingPhase;
+        return [Math.cos(psi) * amp, Math.cos(psi - TAU / 3) * amp, Math.cos(psi - (2 * TAU) / 3) * amp];
+      },
       update(st) {
         rotorGroup.rotation.z = st.rotorAngle;
         winding.update(st);
