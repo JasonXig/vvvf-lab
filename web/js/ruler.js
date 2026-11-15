@@ -57,10 +57,10 @@
     const narrow = W < 560;
     const padL = narrow ? 40 : 112;
     const padR = 14;
-    const top = 24;
-    const short = window.innerHeight < 800 && !window.matchMedia('(max-width: 760px)').matches; // squash the lanes on a short screen
-    const LH = narrow ? 42 : short ? 38 : 44; // the top row holds the segment name, the carrier curve is drawn below it
-    const gap = 6;
+    const top = 28;
+    // A lane, top to bottom: the segment name, the carrier curve, the pulse graduations. Its height is the stylesheet's density token.
+    const LH = narrow ? 44 : NS.Theme.num('--lane-h', 44);
+    const gap = 8;
     geo = {
       W,
       narrow,
@@ -71,8 +71,8 @@
       gap,
       plotW: W - padL - padR,
       laneY: [top, top + LH + gap],
-      axisY: top + 2 * LH + gap + 6,
-      H: top + 2 * LH + gap + 6 + 24,
+      axisY: top + 2 * LH + gap + 8,
+      H: top + 2 * LH + gap + 8 + 24,
       max: S.maxSpeed,
     };
     svg.setAttribute('width', W);
@@ -82,6 +82,8 @@
   }
   const xOf = (v) => geo.padL + (clamp(v, 0, geo.max) / geo.max) * geo.plotW;
   const vOf = (x) => ((x - geo.padL) / geo.plotW) * geo.max;
+  // Height of a carrier frequency inside lane li: 0 Hz sits just above the pulse graduations, the top of the scale just below the segment name
+  const traceY = (li, fc) => geo.laneY[li] + geo.LH - 10 - (clamp(fc, 0, geo.fcTop) / geo.fcTop) * (geo.LH - 28);
   const speedAt = (clientX) => clamp(Math.round(vOf(clientX - svg.getBoundingClientRect().left) * 10) / 10, 0, geo.max);
 
   // Carrier frequency against speed: one polyline per segment (the jumps between segments are not connected)
@@ -98,10 +100,32 @@
       for (let k = 0; k <= steps; k++) {
         const v = from + ((s.to - from) * k) / steps - (k === steps ? 1e-6 : 0);
         const d = Drive.compute(v, p, sync, drive, lane === 'B', 1);
-        pts.push([v, T.carrierAt(t, v, d.f1)]);
+        pts.push([v, T.carrierAt(t, v, d.f1), d.f1]);
       }
       return pts;
     });
+  }
+  // Pulses per fundamental period, drawn as graduations along the bottom of a segment: fine where the carrier makes many pulses
+  // in a cycle (asynchronous at low speed), coarser as the pulse count falls, one long step for the single pulse of a square wave.
+  const TICK_K = 84; // px between graduations at one pulse per period (before the limits below)
+  function pulseTicks(s, pts, x0, x1, y0, y1) {
+    const perCycle = (x) => {
+      if (s.kind === 'sync') return s.n;
+      if (s.kind === 'wide3') return 3;
+      if (s.kind === 'square') return 1;
+      const v = vOf(x);
+      let k = 1;
+      while (k < pts.length - 1 && pts[k][0] < v) k++;
+      const a = pts[k - 1];
+      const b = pts[k];
+      const u = clamp((v - a[0]) / Math.max(1e-6, b[0] - a[0]), 0, 1);
+      const fc = a[1] + (b[1] - a[1]) * u;
+      const f1 = a[2] + (b[2] - a[2]) * u;
+      return fc / Math.max(f1, 0.05);
+    };
+    let d = '';
+    for (let x = x0 + 3; x < x1 - 2; x += clamp(TICK_K / perCycle(x), 2.5, 56)) d += 'M' + x.toFixed(1) + ' ' + y0 + 'V' + y1;
+    return d;
   }
   function niceTop(x) {
     for (const c of [300, 600, 1200, 1800, 2400, 3000, 4500, 6000, 9000]) if (x * 1.06 <= c) return c;
@@ -121,6 +145,7 @@
     let fcMax = 0;
     for (const id of ['A', 'B']) for (const seg of traces[id]) for (const pt of seg) fcMax = Math.max(fcMax, pt[1]);
     const top = niceTop(fcMax);
+    geo.fcTop = top;
 
     const gLane = node('g', null, svg);
     const gTrace = node('g', { class: 'traces' }, svg);
@@ -130,9 +155,9 @@
       const t = S.tables[lane.id];
       const y = geo.laneY[li];
       const LH = geo.LH;
-      node('rect', { class: 'lanebg', x: geo.padL, y, width: geo.plotW, height: LH, rx: 8 }, gLane);
+      node('rect', { class: 'lanebg', x: geo.padL, y, width: geo.plotW, height: LH, rx: 4 }, gLane);
       // y-axis scale: how many Hz a full lane height stands for
-      const tt = node('text', { class: 'ytop', x: geo.padL + geo.plotW - 4, y: y + 11, 'text-anchor': 'end' }, gLane);
+      const tt = node('text', { class: 'ytop', x: geo.padL + geo.plotW - 6, y: y + 13, 'text-anchor': 'end' }, gLane);
       if (li === 0) tt.textContent = top >= 1000 ? top / 1000 + ' kHz' : top + ' Hz';
 
       // Two markers on the voltage curve: full modulation (reference amplitude 1) and full voltage (square-wave equivalent)
@@ -152,15 +177,16 @@
         const x1 = xOf(s.to);
         const w = x1 - x0;
         const g = node('g', { class: 'seg', 'data-hit': 'seg', 'data-lane': lane.id, 'data-i': i, style: '--h:' + HUE[s.kind] }, gLane);
-        node('rect', { x: x0 + 0.75, y, width: Math.max(1, w - 1.5), height: LH, rx: 6 }, g);
+        node('rect', { x: x0 + 1, y, width: Math.max(1, w - 2), height: LH, rx: 3 }, g); // a 2px gap of deck surface between neighbours
+        if (w >= 8) node('path', { class: 'ticks', d: pulseTicks(s, traces[lane.id][i], x0, x1, y + LH - 7, y + LH - 2) }, g);
         // Segment name and parameter on one line (the parameter only if it fits); the carrier curve is drawn below
         if (w >= 38) {
           const kindText = KIND_SHORT[s.kind];
           const param = s.kind === 'async' ? (s.fc0 === s.fc1 ? hz(s.fc0) : hz(s.fc0) + '→' + hz(s.fc1)) + ' Hz' : s.kind === 'sync' ? s.n + ' pulses' : s.kind === 'wide3' ? 'overmod.' : '1 pulse';
           const textW = (str) => [...str].reduce((a, c) => a + (c.charCodeAt(0) > 255 ? 11 : 6.2), 0);
-          const lab = node('text', { class: 'lab', x: x0 + 8, y: y + 14 }, g);
+          const lab = node('text', { class: 'lab', x: x0 + 8, y: y + 13 }, g);
           node('tspan', { class: 't1' }, lab).textContent = kindText;
-          if (8 + textW(kindText) * 1.1 + 8 + textW(param) + 6 <= w) node('tspan', { class: 't2', dx: 7 }, lab).textContent = param;
+          if (8 + textW(kindText) * 1.1 + 8 + textW(param) + 6 <= w) node('tspan', { class: 't2', dx: 8 }, lab).textContent = param;
         }
         node('title', null, g).textContent = LANE_NAME[lane.id] + ' · ' + fmt1(from) + ' – ' + fmt1(s.to) + ' km/h · ' + T.describe(s) + ' (click to edit)';
         segEls[lane.id][i] = g;
@@ -168,7 +194,7 @@
 
       // carrier curve
       for (const pts of traces[lane.id]) {
-        const d = pts.map((p, k) => (k ? 'L' : 'M') + xOf(p[0]).toFixed(1) + ' ' + (y + LH - 4 - (clamp(p[1], 0, top) / top) * (LH - 24)).toFixed(1)).join('');
+        const d = pts.map((p, k) => (k ? 'L' : 'M') + xOf(p[0]).toFixed(1) + ' ' + traceY(li, p[1]).toFixed(1)).join('');
         node('path', { class: 'glow', d }, gTrace);
         node('path', { class: 'line', d }, gTrace);
       }
@@ -183,7 +209,7 @@
         const half = clamp(Math.min(wLeft, wRight) / 4, 2.5, 7);
         const h = node('g', { class: 'handle', 'data-hit': 'handle', 'data-lane': lane.id, 'data-i': i }, gHandle);
         node('rect', { class: 'hit', x: hx - half, y: y - 2, width: half * 2, height: LH + 4 }, h);
-        node('rect', { class: 'grip', x: hx - 2, y: y + LH / 2 - 8, width: 4, height: 16, rx: 2 }, h);
+        node('rect', { class: 'grip', x: hx - 1, y: y + LH / 2 - 8, width: 2, height: 16, rx: 1 }, h);
         node('title', null, h).textContent = 'Drag to move the boundary at ' + fmt1(s.to) + ' km/h';
       });
 
@@ -195,8 +221,8 @@
       lab.style.width = geo.padL - 6 + 'px'; // must not be wider than the blank space left of the ruler, otherwise it covers the first segment
       lab.innerHTML =
         '<b>' + (geo.narrow ? lane.id : lane.name) + '</b>' + (geo.narrow ? '' : '<small>' + lane.id + '</small>') +
-        (geo.narrow ? '' : '<button class="mini" data-scale="' + lane.id + '" aria-label="Scale steps of the ' + lane.name + ' table" title="Scale steps: lay a run of rising asynchronous modulations over a speed range (do re mi)">♪</button>') +
-        '<button class="mini" data-menu="' + lane.id + '" aria-label="Options of the ' + lane.name + ' table" title="' + lane.name + ' table options: presets, voltage curve, import / export">⋯</button>';
+        (geo.narrow ? '' : '<button class="btn xs mini" data-scale="' + lane.id + '" aria-label="Scale steps of the ' + lane.name + ' table" title="Scale steps: lay a run of rising asynchronous modulations over a speed range (do re mi)"><svg class="ic" aria-hidden="true"><use href="#i-note"/></svg></button>') +
+        '<button class="btn xs mini" data-menu="' + lane.id + '" aria-label="Options of the ' + lane.name + ' table" title="' + lane.name + ' table options: presets, voltage curve, import / export"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>';
       labels.appendChild(lab);
     });
 
@@ -217,19 +243,31 @@
     unit.textContent = 'km/h';
 
     // The dot riding on the carrier curve with the speed: its height is the current pitch (carrier frequency)
-    geo.fcTop = top;
-    dot = node('circle', { class: 'cdot', r: 4.5, cx: -20, cy: -20 }, svg);
+    dot = node('circle', { class: 'cdot', r: 4, cx: -20, cy: -20 }, svg);
 
     // playhead: the current speed
     ph = node('g', { class: 'ph', 'data-hit': 'ph' }, svg);
-    node('line', { x1: 0, x2: 0, y1: 14, y2: geo.axisY }, ph);
-    node('rect', { class: 'flag', x: -25, y: 0, width: 50, height: 19, rx: 9.5 }, ph);
-    phText = node('text', { x: 0, y: 13.5, 'text-anchor': 'middle' }, ph);
+    node('rect', { class: 'glass', x: -8, y: 24, width: 16, height: geo.axisY - 22, rx: 2 }, ph);
+    node('line', { x1: 0, x2: 0, y1: 18, y2: geo.axisY }, ph);
+    node('rect', { class: 'flag', x: -22, y: 0, width: 44, height: 20, rx: 4 }, ph);
+    phText = node('text', { x: 0, y: 14, 'text-anchor': 'middle' }, ph);
     node('rect', { class: 'grab', x: -9, y: 0, width: 18, height: geo.axisY }, ph);
     phLast = '';
+    dragFlag();
     markSel();
     refreshInsp();
     update({ lane: '', seg: -1, run: false });
+  }
+
+  // While a boundary is being dragged, a small flag above it shows the speed it stands at
+  function dragFlag() {
+    const old = svg.querySelector('.dragflag');
+    if (old) old.remove();
+    if (!drag || drag.kind !== 'handle') return;
+    const v = S.tables[drag.lane].segments[drag.i].to;
+    const g = node('g', { class: 'dragflag', transform: 'translate(' + xOf(v).toFixed(1) + ' ' + (geo.laneY[drag.lane === 'B' ? 1 : 0] - 3) + ')' }, svg);
+    node('rect', { x: -20, y: -18, width: 40, height: 18, rx: 3 }, g);
+    node('text', { x: 0, y: -5, 'text-anchor': 'middle' }, g).textContent = fmt1(v);
   }
 
   // ================================================================ Every frame: the playhead and the segment that is working
@@ -241,7 +279,7 @@
     if (f.run && f.fc !== undefined) {
       const li = f.lane === 'B' ? 1 : 0;
       dot.setAttribute('cx', px.toFixed(1));
-      dot.setAttribute('cy', (geo.laneY[li] + geo.LH - 4 - (clamp(f.fc, 0, geo.fcTop) / geo.fcTop) * (geo.LH - 24)).toFixed(1));
+      dot.setAttribute('cy', traceY(li, f.fc).toFixed(1));
       dot.style.display = '';
     } else dot.style.display = 'none';
     const label = fmt1(S.speed);
@@ -251,6 +289,9 @@
     }
     const key = f.lane + ':' + f.seg + ':' + f.run;
     if (key !== liveKey) {
+      // the inverter has just changed modulation while running: mark the moment on the ruler, in time with the change you hear
+      const was = liveKey.split(':');
+      if (f.run && was[2] === 'true' && was[0] === f.lane && Number(was[1]) !== f.seg && !S.scrub.active) flash(px, f.lane === 'B' ? 1 : 0);
       liveKey = key;
       for (const id of ['A', 'B']) {
         segEls[id].forEach((g, i) => {
@@ -260,6 +301,12 @@
         });
       }
     }
+  }
+
+  function flash(x, li) {
+    const y = geo.laneY[li];
+    const l = node('line', { class: 'flash', x1: x.toFixed(1), x2: x.toFixed(1), y1: y, y2: y + geo.LH }, svg);
+    l.addEventListener('animationend', () => l.remove());
   }
 
   function markSel() {
@@ -273,15 +320,15 @@
   function positionPop(el, cx) {
     if (window.matchMedia('(max-width: 760px)').matches) {
       // on a phone the editor sits above the ruler instead of floating over it
-      el.style.left = '';
+      el.style.removeProperty('--x');
       el.style.setProperty('--caret', '-100px');
       if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       return;
     }
     const w = el.offsetWidth || 352;
     const left = clamp(cx - w / 2, 6, Math.max(6, wrap.clientWidth - w - 6));
-    el.style.left = left + 'px';
-    el.style.setProperty('--caret', clamp(cx - left, 18, w - 18) + 'px');
+    el.style.setProperty('--x', Math.round(left) + 'px');
+    el.style.setProperty('--caret', Math.round(clamp(cx - left, 20, w - 20)) + 'px');
   }
 
   function refreshInsp() {
@@ -296,6 +343,14 @@
     const s = t.segments[i];
     const last = i === t.segments.length - 1;
     const from = T.segmentFrom(t, i);
+    const shown = lane + ':' + i;
+    if (!insp.hidden && insp.dataset.shown && insp.dataset.shown !== shown) {
+      const body = insp.querySelector('.pop-scroll');
+      body.classList.remove('swap');
+      void body.offsetWidth; // restart the animation
+      body.classList.add('swap');
+    }
+    insp.dataset.shown = shown;
     insp.hidden = false;
     insp.style.setProperty('--h', HUE[s.kind]);
     $('inspTitle').textContent = LANE_NAME[lane] + ' · segment ' + (i + 1);
@@ -606,7 +661,7 @@
       if (!scalePop.hidden && scaleLane === b.dataset.scale) scalePop.hidden = true;
       else openScale(b.dataset.scale, b);
     });
-    // On a narrow screen there is no ♪ button beside the lane name, so enter from the "⋯" menu
+    // On a narrow screen there is no scale-steps button beside the lane name, so enter from the lane's menu
     $('tblScale').addEventListener('click', () => openScale(menuLane, labels.querySelector('button[data-menu="' + menuLane + '"]') || $('tblScale')));
     $('scClose').addEventListener('click', () => (scalePop.hidden = true));
 
@@ -659,6 +714,14 @@
       S.tables[scaleLane] = t;
       S.sel = null; // the old segments are gone, so the selection is void (select(null) cannot be used: it would close the popover too)
       render();
+      // the new steps grow in one after another, low to high
+      let k = 0;
+      t.segments.forEach((s, i) => {
+        if (T.segmentFrom(t, i) < from - 1e-6 || s.to > to + 1e-6) return;
+        const el = segEls[scaleLane][i];
+        el.style.setProperty('--k', k++);
+        el.classList.add('born');
+      });
       hooks.saveTables();
       note('Generated ' + p.carriers.length + (p.carriers.length === 1 ? ' step' : ' steps') + ' (' + LANE_NAME[scaleLane] + ' table ' + round1(from) + ' – ' + round1(to) + ' km/h)', true);
       if (play) {
@@ -694,6 +757,7 @@
       if (menu) menu.hidden = true;
       if (kind === 'handle') {
         hooks.stopDemo();
+        dragFlag();
       } else if (kind !== 'seg') {
         startScrub(e);
       }
@@ -714,9 +778,14 @@
         const same = S.sel && S.sel.lane === drag.lane && S.sel.i === drag.i;
         select(same ? null : drag.lane, drag.i);
       }
-      if (drag.kind === 'scrub') S.scrub.active = false;
+      if (drag.kind === 'scrub') {
+        S.scrub.active = false;
+        if (ph) ph.classList.remove('scrub');
+      }
       if (drag.kind === 'handle' && drag.changed) hooks.saveTables();
+      const wasHandle = drag.kind === 'handle';
       drag = null;
+      if (wasHandle) dragFlag(); // takes the flag away
     };
     svg.addEventListener('pointerup', end);
     svg.addEventListener('pointercancel', end);
@@ -726,6 +795,7 @@
     S.scrub.active = true;
     S.speed = speedAt(e.clientX);
     drag.kind = 'scrub';
+    if (ph) ph.classList.add('scrub');
     hooks.gesture();
   }
   function dragHandle(e) {

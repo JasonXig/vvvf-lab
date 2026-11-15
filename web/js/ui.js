@@ -70,13 +70,21 @@
   let shownNotch = -1;
   function syncLever() {
     if (S.notch === shownNotch) return;
+    if (shownNotch >= 0) {
+      // the handle drops into the notch: a small overshoot in the direction it travelled
+      const thumb = $('lvThumb');
+      thumb.style.setProperty('--dir', S.notch > shownNotch ? 1 : -1);
+      thumb.classList.remove('detent');
+      void thumb.offsetWidth; // restart the animation
+      thumb.classList.add('detent');
+    }
     shownNotch = S.notch;
     const n = NOTCHES[S.notch];
     const lv = $('lever');
     lv.style.setProperty('--i', S.notch);
     lv.dataset.mode = n.mode;
     $('lvThumbText').textContent = n.id;
-    $('lvName').textContent = n.id + ' · ' + MODE_NAME[n.mode];
+    swapText($('lvName'), n.id + ' · ' + MODE_NAME[n.mode]);
     $('lvTrack').setAttribute('aria-valuenow', S.notch);
     $('lvTrack').setAttribute('aria-valuetext', n.id + ' ' + MODE_NAME[n.mode]);
     $('lvLabels')
@@ -85,10 +93,7 @@
   }
 
   // ================================================================ Inverter, sound
-  const ICON_ON =
-    '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>';
-  const ICON_OFF =
-    '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6"/></svg>';
+  const icon = (id) => '<svg class="ic" aria-hidden="true"><use href="#i-' + id + '"/></svg>';
 
   let lastSound = null;
   function refreshSound() {
@@ -96,7 +101,7 @@
     const sig = [S.soundOn, S.audio.mode, S.audio.error].join('|');
     if (sig === lastSound) return;
     lastSound = sig;
-    btn.innerHTML = S.soundOn ? ICON_ON : ICON_OFF;
+    btn.innerHTML = icon(S.soundOn ? 'vol' : 'mute');
     btn.classList.toggle('off', !S.soundOn);
     btn.setAttribute('aria-pressed', String(S.soundOn));
     let text;
@@ -177,7 +182,15 @@
   function openDrawerTab(tab) {
     $('drawer').dataset.tab = tab;
     document.querySelectorAll('#drawerTabs button').forEach((b) => b.classList.toggle('on', b.dataset.pane === tab));
-    ['motor', 'view'].forEach((p) => ($('pane-' + p).hidden = p !== tab));
+    ['motor', 'view'].forEach((p) => {
+      const pane = $('pane-' + p);
+      if (pane.hidden && p === tab) {
+        pane.classList.remove('swap');
+        void pane.offsetWidth; // restart the animation
+        pane.classList.add('swap');
+      }
+      pane.hidden = p !== tab;
+    });
     $('btnMotor').classList.toggle('on', tab === 'motor');
     $('btnView').classList.toggle('on', tab === 'view');
   }
@@ -237,6 +250,14 @@
     const el = $(id);
     if (el.textContent !== v) el.textContent = v;
   }
+  // A short rise when a discrete readout changes (state, modulation, notch). Continuous numbers never animate: they change 12 times a second.
+  function swapText(el, v) {
+    if (el.textContent === v) return;
+    el.textContent = v;
+    el.classList.remove('swap');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('swap');
+  }
 
   // f = { speed, mode, run, lane, seg, segKind, kind, n, fc, f1, ns, nr, slip, v1, why }
   function update(f, nowMs) {
@@ -253,6 +274,8 @@
       last.inv = S.inverterOn;
       $('btnInv').classList.toggle('on', S.inverterOn);
       $('btnInv').setAttribute('aria-pressed', String(S.inverterOn));
+      $('invState').textContent = S.inverterOn ? 'On' : 'Off';
+      document.body.classList.toggle('inv-off', !S.inverterOn); // the ruler fades: nothing on it can sound
     }
     if (S.demo !== last.demo) {
       last.demo = S.demo;
@@ -273,12 +296,12 @@
     const chip = $('stState');
     if (state !== last.state) {
       last.state = state;
-      chip.textContent = state;
       chip.className = 'chip st ' + cls;
+      swapText(chip, state);
     }
     // Modulation: the current modulation while the inverter is running, the reason when it is not
     let mode;
-    let hue = 'var(--dim)';
+    let hue = 'var(--ink-3)';
     if (f.run) {
       hue = HUE[f.segKind] || hue;
       mode = f.segKind === 'async' ? 'Async · ' + Math.round(f.fc) + ' Hz' : f.segKind === 'sync' ? 'Sync · ' + f.n + ' pulses' : f.segKind === 'wide3' ? 'Wide 3-pulse · overmodulation' : 'Single pulse · square wave';
@@ -289,7 +312,7 @@
       last.mode = mode;
       last.hue = hue;
       $('stMode').style.setProperty('--h', hue);
-      $('stModeText').textContent = mode;
+      swapText($('stModeText'), mode);
     }
     setText('sF1', f.run ? f.f1.toFixed(1) : '—');
     setText('sFc', f.run ? String(Math.round(f.fc)) : '—');
@@ -328,7 +351,7 @@
     update,
     refreshTables: () => NS.Ruler.render(),
     drawScopes(analyser, nowMs, waveFrame) {
-      NS.Scopes.drawSpectro(analyser, nowMs);
+      NS.Scopes.drawSpectro(analyser, nowMs, waveFrame);
       NS.Scopes.drawLevel(analyser, nowMs);
       NS.Scopes.drawWave(waveFrame, nowMs);
     },

@@ -7,7 +7,7 @@
   const T = THREE;
   const $ = (id) => document.getElementById(id);
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-  const HOT = new T.Color(0x22d3ee);
+  const HOT = new T.Color(0xffffff); // a hovered or selected piece is tinted a little towards white
   const EASE = 0.16; // time constant of the pieces' motion [s]
   const STEP_DELAY = 0.2; // pieces of a later step start this much later [s]
   const DETAIL_VIEW = { az: 1.02, pol: 1.2, dist: 6.4 }; // camera angle for the exploded view; it is fitted to the spread-out pieces
@@ -213,7 +213,7 @@
     p.mats.forEach((m) => {
       const o = m.userData.emissive;
       if (on) {
-        // the glow it already had (colour × intensity), a little towards cyan
+        // the glow it already had (colour × intensity), a little towards white
         m.emissive.copy(o.color).multiplyScalar(o.intensity).lerp(HOT, 0.16);
         m.emissiveIntensity = 1;
       } else {

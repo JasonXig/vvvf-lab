@@ -127,10 +127,11 @@
   function syncDeckHeight() {
     const root = document.documentElement;
     if (phoneLayout.matches) root.style.removeProperty('--deck-h');
-    else root.style.setProperty('--deck-h', $('deck').offsetHeight + 28 + 'px');
+    else root.style.setProperty('--deck-h', $('deck').offsetHeight + 'px');
     resize();
   }
   window.addEventListener('resize', syncDeckHeight);
+  if ('ResizeObserver' in window) new ResizeObserver(resize).observe(stage); // the stage also changes width when the scope rail docks beside it
 
   // ---------------------------------------------------------------- Orbit camera (drag to rotate, wheel to zoom, double-click to reset)
   class Orbit {
@@ -461,7 +462,7 @@
       const visible = (S.explode || S.labelsOn) && l.show !== false && tmpV.z < 1; // the exploded view has its own labels and switch
       el.style.display = visible ? '' : 'none';
       if (visible) {
-        el.style.transform = 'translate(' + ((tmpV.x * 0.5 + 0.5) * w).toFixed(1) + 'px,' + ((-tmpV.y * 0.5 + 0.5) * h).toFixed(1) + 'px) translate(-50%,-130%)';
+        el.style.transform = 'translate(' + ((tmpV.x * 0.5 + 0.5) * w).toFixed(1) + 'px,' + ((-tmpV.y * 0.5 + 0.5) * h).toFixed(1) + 'px)'; // the stylesheet lifts the label off its anchor
       }
     });
   }
@@ -634,6 +635,16 @@
   });
   if ('ResizeObserver' in window) new ResizeObserver(syncDeckHeight).observe($('deck'));
   syncDeckHeight();
+  // The page's font has arrived: text is a different size now, so the ruler and the deck are measured again
+  NS.Theme.onChange(() => {
+    NS.UI.refreshTables();
+    syncDeckHeight();
+  });
+  // First paint: the camera starts a little further back and glides in while the deck rises
+  if (query.get('intro') !== '0' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    orbit.dist = orbit.home.dist * 1.18;
+    orbit.animateTo(orbit.home, 1.2);
+  }
 
   let last = performance.now();
   function frame(now) {

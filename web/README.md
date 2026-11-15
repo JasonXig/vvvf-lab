@@ -16,11 +16,11 @@ Push the master controller and the train speeds up, the rotor in the 3D motor sp
 
 **Live demo:** https://jasonxig.github.io/vvvf-lab/
 
-Or double-click [index.html](index.html), or double-click `run_web.bat` one level up. No server and no internet are needed: three.js r159 (MIT) is already in `vendor/`. The browser console shows one three.js "script build is deprecated" notice, which is normal.
+Or double-click [index.html](index.html), or double-click `run_web.bat` one level up. No server and no internet are needed: three.js r159 (MIT) and the page's typeface, Instrument Sans (SIL OFL), are already in `vendor/`, and the page asks no other server for anything. The browser console shows one three.js "script build is deprecated" notice, which is normal.
 
 **Click the page once to enable sound.** Browsers only let a page make sound after a click or key press. Click anywhere, or just move the controller; the bottom-right of the cab deck tells you whether sound is on. The default volume is 30%; check it before putting on headphones.
 
-The first time you open it there is a "How to play" card; the `?` at the top brings it back at any time.
+The first time you open it there is a "How to play" card; the `?` at the top right brings it back at any time.
 
 URL parameters open the page in a given state:
 
@@ -34,6 +34,7 @@ URL parameters open the page in a given state:
 | `demo` | `1` starts the automatic demo | `?demo=1` |
 | `explode` | `1` opens the exploded view straight away | `?explode=1&type=ipmsm` |
 | `coach` | `0` hides the first-run tips | `?coach=0` |
+| `intro` | `0` skips the camera gliding in when the page opens | `?intro=0` |
 | `worklet` | `0` skips AudioWorklet and forces the fallback (for testing) | `?worklet=0` |
 | `pedal` | Old parameter: `power` is P4, `brake` is B3 | `?pedal=power` |
 
@@ -43,7 +44,7 @@ The strip at the bottom is the cab deck. Top to bottom, left to right:
 
 ### Master controller
 
-A horizontal rail: brake on the left, neutral in the middle, power on the right. **Drag the handle, click a notch, click the ‹ › buttons at the ends, or use the keyboard:** `↑` / `W` one notch towards power, `↓` / `S` one notch towards braking, `Space` back to neutral N, `H` hold speed. The controller stays where you put it; there is nothing to hold down.
+A horizontal slide switch: brake on the left, neutral in the middle, power on the right. A band from N out to the handle shows how hard you are powering (green; amber in hold) or braking (red). **Drag the handle, click a notch, click the arrow buttons at the ends, or use the keyboard:** `↑` / `W` one notch towards power, `↓` / `S` one notch towards braking, `Space` back to neutral N, `H` hold speed. The controller stays where you put it; there is nothing to hold down.
 
 | Notch | Meaning |
 | --- | --- |
@@ -60,16 +61,16 @@ How the speed changes (a simplified demo model): under power, constant accelerat
 
 ### Mode ruler: speedometer, slider and mode-table editor in one
 
-The horizontal axis is vehicle speed from 0 to 160 km/h. The upper lane is the **power table**, the lower lane the **brake table**. Each segment is coloured by modulation kind (teal = async, indigo = sync N pulses, magenta = wide 3-pulse, amber = square wave). The **white line inside is carrier frequency against speed** (which is the pitch), and the dot on it is where you are now.
+The horizontal axis is vehicle speed from 0 to 160 km/h. The upper lane is the **power table**, the lower lane the **brake table**. Each segment is coloured by modulation kind (blue-green = async, indigo = sync, crimson = wide 3-pulse, amber = square wave; the four were chosen so that any two can still be told apart with red-green colour blindness). The **dark line inside is carrier frequency against speed** (which is the pitch), and the dot on it is where you are now. The **graduations along the bottom of each segment are the pulses per fundamental period**: fine where the carrier makes many pulses in a cycle, coarser as the pulse count falls, widest for the single pulse of a square wave.
 
-- **The vertical line is the current speed.** Drag it, or press and drag anywhere on the ruler, and the speed jumps there while the sound and the 3D motor follow. After you let go the train carries on with the current notch (in neutral the sound keeps going).
-- **Drag the boundary between two segments** to change the speed range (rounded to 0.5 km/h; it cannot cross a neighbouring boundary).
+- **The cursor is the current speed**: a red hairline in a small glass, like the cursor of a slide rule, with the speed on a flag above it. Drag it, or press and drag anywhere on the ruler, and the speed jumps there while the sound and the 3D motor follow. After you let go the train carries on with the current notch (in neutral the sound keeps going).
+- **Drag the boundary between two segments** to change the speed range (rounded to 0.5 km/h; it cannot cross a neighbouring boundary). A small flag shows the speed it stands at while you drag.
 - **Click a segment** to open the editor:
   - modulation kind: async, sync, wide 3, square;
   - speed limit (the last segment extends to the top speed and cannot be changed);
   - async: start and end carrier frequency, linear within the segment; sync: pulse count N (an odd number from 3 to 99);
-  - ◀ ▶ move to the previous / next segment, "Split" cuts a segment in two, "Delete" merges it into its neighbour;
-  - **▶ Listen**: in the power table, jump to the middle of the segment and hold the speed; in the brake table, jump to its high-speed end and glide through with the lightest braking.
+  - the two arrow buttons move to the previous / next segment (the editor slides over to it), "Split" cuts a segment in two, "Delete" merges it into its neighbour;
+  - **Listen**: in the power table, jump to the middle of the segment and hold the speed; in the brake table, jump to its high-speed end and glide through with the lightest braking.
   - If you get something wrong (a speed limit below the previous one, an even pulse count) it tells you why and the table is left unchanged.
 - **♪ beside a lane name**: scale steps, lay "do re mi" in one click; see the next section.
 - **⋯ beside a lane name**: presets (reference example, GTO type, IGBT type, scale-style async), the voltage curve (the two speeds for full modulation and full voltage, shown as dashed lines on the ruler), copy to the other table, reset, export / import JSON. Tables are saved in the browser (localStorage) and are still there next time.
@@ -103,16 +104,16 @@ Press **Generate and listen**: the table immediately gains 8 constant-carrier as
 
 **The real Keikyu 1000** used a Siemens GTO inverter, and I have no data on its actual pitches or the speed range of each step; the "do re mi" here is a sketch laid out as a major scale. The speed and pitch of every step can be changed, and it can be calibrated once there is a recording to compare with.
 
-The segment lit up in a lane is the one the inverter is using right now; the brighter, glowing state means the inverter is switching.
+The segment with the stronger colour is the one the inverter is using right now, and at the moment the inverter changes modulation a line flashes on the cursor, in time with the change you hear. With the inverter switched off the whole ruler fades: nothing on it can sound.
 
 ### Readouts, inverter, sound
 
-- **Speed** and the rotor-speed bar below it (the colour is the same set as the blur on the rotor in 3D: blue → cyan → green → yellow → red). Its full scale follows the drivetrain: 6000 rpm with the 5.6 gearbox, 1000 rpm for the direct drives.
+- **Speed** and the rotor-speed bar below it. Its full scale follows the drivetrain: 6000 rpm with the 5.6 gearbox, 1000 rpm for the direct drives.
 - **Status**: Power / Neutral / Hold / Brake / Stopped, and the current modulation; when the inverter is not running it says why (inverter off, regenerative brake released, inverter standby). Six readouts: fundamental frequency f₁, carrier, voltage V₁ (a square wave is 100%), synchronous speed, rotor speed, slip ratio.
 - **Inverter lamp**: off means no tractive effort and no regenerative braking: power and hold can only coast, and braking is mechanical only (no sound, and the field disappears too). Regenerative braking is released below 1 Hz of fundamental frequency and handed over to mechanical braking.
 - **Speaker** and volume bar affect only the sound, not the train. `M` mutes.
-- Top right: the **spectrogram** (last 7 seconds, 0–4 kHz vertically, so you can see the flat carrier line and the slanting synchronous lines) and the **switching waveform** (the ±1 output of the phase-A leg with the reference sine and triangle carrier, so you can see "how many pulses" at a glance; when the async carrier is too dense it zooms in to 30 carrier periods). The thin bar under the spectrogram is loudness and does not move when there is no sound.
-- Top left: **Motor** (type, JSON motor definition), **Display** (how speed is shown, scene options), **Demo** (automatic: accelerate with P4 to 120 km/h → neutral coasting for 4 s → brake to a stop with B3 → repeat; touching the controller or the ruler stops it), **?** (how to play). `P` pauses the animation.
+- On the right: the **spectrogram** (last 7 seconds, 0–4 kHz vertically, so you can see the flat carrier line and the slanting synchronous lines; every column is drawn in the colour of the modulation that was sounding, the same colours as the ruler) and the **switching waveform** (the ±1 output of the phase-A leg with the reference sine and triangle carrier, so you can see "how many pulses" at a glance; when the async carrier is too dense it zooms in to 30 carrier periods). The thin bar under the spectrogram is loudness and does not move when there is no sound.
+- Along the top: **Motor** (type, JSON motor definition), **Display** (how speed is shown, scene options), **Demo** (automatic: accelerate with P4 to 120 km/h → neutral coasting for 4 s → brake to a stop with B3 → repeat; touching the controller or the ruler stops it), **?** (how to play). `P` pauses the animation.
 
 On a narrow screen (phone portrait) the cab deck becomes a bottom sheet with the motor above it and the editor above the ruler; the controller and the ruler both support touch dragging.
 
@@ -287,6 +288,8 @@ labels(ctx, { winding, field }) { return [/* labels of the shared parts, placed 
 
 | File | Contents |
 | --- | --- |
+| `css/app.css` | The whole interface: a light enamel panel with dark screens. Colours, type, spacing, radii and motion are tokens at the top of the file |
+| `js/theme.js` | Lets the canvases read those tokens, so no colour is written in two places |
 | `js/modes.js` | The JavaScript version of Python `modes.py` (mode maps split by fundamental frequency) |
 | `js/drive.js` | Drivetrain and slip, longitudinal train dynamics, controller notches, the rule for when the inverter is running |
 | `js/table.js` | Mode tables split by speed: lookup, V/f curve, overmodulation conversion, calibration of synchronous modulation with few pulses, validation, presets, scales and scale steps |
@@ -308,7 +311,7 @@ The logic layer and the sound-synthesis core do not depend on a browser, so they
 - `tests/test_web_synth.py`: the strongest lines of the JS synthesis against the Python `DriveSynth` one by one (within 4%); asynchronous sidebands, synchronous sidebands, three-phase balance (N not a multiple of 3), whether the fundamental is subtracted cleanly in wide 3-pulse; whether it is fast enough for real time.
 - `tests/test_web_motors.py`: builds every 3D motor type and preset in Node with the real three.js (geometry needs no WebGL), with the cut-away on and off: finite geometry of the expected size, labels in place, a few frames of `update()`; inner-rotor types are cut in their geometry and the outer rotor with clipping planes on exactly its turning parts; definitions that do not fit together are refused with a clear message; the stator field made by the winding currents is recomputed from the slots with Ampere's law and must sit where the page asked for it; load angles stay below 90 electrical degrees; every mesh belongs to exactly one piece of the exploded view, each type has the expected pieces with valid paths and filled-in cards, and the numbers on the cards come from the motor definition (cross-checked with formulas written out in Python).
 
-The UI itself was checked with headless Edge (`file://`, sending real mouse, keyboard and touch events over the DevTools protocol) and the in-app browser: controller clicks and dragging, keyboard, spectral lines in the spectrogram persisting in neutral, ruler drag-to-jump / selecting a segment / changing modulation and pulse count / dragging boundaries / split and delete / listen / lane menus, drawer, demo, inverter switch, phone touch, AudioWorklet loading (including `file://`), the `?worklet=0` fallback, and the layouts at 1400×860, 1280×720, 1024×640, tablet and phone portrait; and the exploded view (freezing and carrying on, dragging along a path and its limits, a drag across the path that does nothing, cards from pieces and labels, the toolbar, `Esc` and `E`, the outer rotor, a finger on a phone). **Not verified:** frame rate on a real GPU, a real phone, and what actually comes out of the speakers.
+The UI itself was checked with headless Edge (`file://`, sending real mouse, keyboard and touch events over the DevTools protocol) and the in-app browser: controller clicks and dragging, keyboard, spectral lines in the spectrogram persisting in neutral, ruler drag-to-jump / selecting a segment / changing modulation and pulse count / dragging boundaries / split and delete / listen / lane menus, drawer, demo, inverter switch, phone touch, AudioWorklet loading (including `file://`), the `?worklet=0` fallback, and the layouts at 1400×860, 1280×720, 1024×640, tablet and phone portrait; that the transitions really run and end in the right state (the entrance, the handle and its band, the editor sliding between segments, the drawer, the flash when the modulation changes, the flag on a dragged boundary, entering and leaving the exploded view); and the exploded view (freezing and carrying on, dragging along a path and its limits, a drag across the path that does nothing, cards from pieces and labels, the toolbar, `Esc` and `E`, the outer rotor, a finger on a phone). **Not verified:** frame rate on a real GPU, a real phone, and what actually comes out of the speakers.
 
 ## Relation to the Python part
 

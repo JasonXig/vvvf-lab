@@ -80,7 +80,7 @@ def test_outer_rotor_defaults(js):
     assert s["statorRadius"] + s["airGap"] + s["magnetThickness"] < s["outerRadius"]
     assert math.isclose(b["rMaxXY"], s["outerRadius"] + 0.012, abs_tol=1e-6), "the blur shell is the outermost part"
     texts = [label["text"] for label in b["labels"]]
-    assert any("spindle" in t for t in texts) and any("drum" in t for t in texts) and any("slots facing out" in t for t in texts)
+    assert any("spindle" in t for t in texts) and any("drum" in t for t in texts) and any("Stator core" in t for t in texts)
 
 
 def test_each_layout_has_only_its_own_dimensions(js):

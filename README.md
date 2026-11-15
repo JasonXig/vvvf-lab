@@ -12,11 +12,11 @@ A Python desktop lab plus a zero-install browser demo (open `web/index.html`).
 **Web demo (recommended, nothing to install):** you can also download this repository and double-click `web/index.html` (on Windows, `run_web.bat` works too). Open it in Chrome or Edge (tested in Edge; Firefox and Safari are untested), click the page once to enable sound, and push the master controller to hear it.
 
 - **Master controller:** B5 … B1, N, H, P1 … P4. Drag it, click a notch, or use the keyboard (↑ ↓ / W S, Space for neutral, H to hold speed). Move it back to neutral and the inverter keeps running, so the sound continues and the pitch follows the speed slowly.
-- **Mode ruler:** the speedometer, a slider for jumping to a speed, and the editor of the mode tables in one. The two lanes are the power table and the brake table, each segment is coloured by modulation kind, and the white line is the carrier frequency curve. Drag the white vertical line to jump to any speed, drag a boundary to change a speed range, and click a segment to change its modulation kind, carrier frequency or pulse count, then press "Listen" to hear it at once.
+- **Mode ruler:** the speedometer, a slider for jumping to a speed, and the editor of the mode tables in one. The two lanes are the power table and the brake table, each segment is coloured by modulation kind, the dark line is the carrier frequency curve, and the graduations under it are the pulses per cycle. Drag the cursor to jump to any speed, drag a boundary to change a speed range, and click a segment to change its modulation kind, carrier frequency or pulse count, then press "Listen" to hear it at once.
 - **Scale steps:** click the ♪ beside a lane name to lay a "do re mi" run of rising asynchronous modulations over the first 15 km/h in one click.
 - **3D motor:** squirrel-cage induction, surface-mounted PM, interior PM, outer-rotor PM and double-rotor axial-flux PM motors (the last two as direct drives); the faster the rotor turns the more it blurs and streaks. A new motor type only needs one rotor file; one with another topology brings its own layout and parts.
 - **Exploded view:** take the motor apart, drag each part out along its path, and click it for what it does, what it is made of and this motor's numbers; the train is frozen meanwhile and carries on afterwards.
-- Top right: a spectrogram and the switching waveform of the phase-A leg. It works on a phone in portrait too.
+- On the right: a spectrogram, each column in the colour of the modulation that made it, and the switching waveform of the phase-A leg. It works on a phone in portrait too.
 
 All features, keyboard shortcuts, URL parameters and the code structure are in [web/README.md](web/README.md).
 
@@ -77,4 +77,4 @@ P1 three-phase SPWM bench → P2 induction motor steady state → P3 mode-table 
 
 ## License
 
-[MIT](LICENSE). `web/vendor/three.min.js` is [three.js](https://threejs.org) r159 (MIT, copyright the three.js authors); its license text is in [web/vendor/LICENSE-three.txt](web/vendor/LICENSE-three.txt).
+[MIT](LICENSE). `web/vendor/three.min.js` is [three.js](https://threejs.org) r159 (MIT, copyright the three.js authors); its license text is in [web/vendor/LICENSE-three.txt](web/vendor/LICENSE-three.txt). `web/vendor/fonts/InstrumentSans-latin.woff2` is [Instrument Sans](https://github.com/Instrument/instrument-sans) (SIL Open Font License 1.1, copyright the Instrument Sans project authors); its license text is in [web/vendor/fonts/OFL-InstrumentSans.txt](web/vendor/fonts/OFL-InstrumentSans.txt).

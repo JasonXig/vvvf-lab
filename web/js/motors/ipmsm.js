@@ -32,7 +32,7 @@
       group.add(
         H.piece(new T.Mesh(H.cyl(g.Rr, Lr, 96), coreMat), {
           id: 'rotorCore',
-          name: 'Rotor core (with magnet pockets)',
+          name: 'Rotor core',
           dir: [0, 0, 1],
           dist: g.xNear,
           info: {
@@ -44,7 +44,7 @@
       );
       const magnets = H.piece(new T.Group(), {
         id: 'magnets',
-        name: 'Permanent magnets (buried, V-shaped)',
+        name: 'Buried magnets',
         dir: [0, 0, 1],
         dist: g.xFar,
         step: 2,
@@ -78,7 +78,7 @@
       return {
         group,
         fadeMats: [coreMat, northMat, southMat],
-        labels: [{ text: 'Interior rotor (V-shaped magnets)', pos: new T.Vector3(g.Rr * 0.6, g.Rr * 0.3, Lr / 2 + 0.12) }],
+        labels: [{ text: 'Interior-magnet rotor', pos: new T.Vector3(g.Rr * 0.6, g.Rr * 0.3, Lr / 2 + 0.12) }],
       };
     },
   });

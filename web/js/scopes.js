@@ -1,14 +1,18 @@
-// Two scopes in the top-right corner and a level meter:
-//   spectrogram        reads the audio analyser, one column every 33 ms
+// Two scopes and a level meter:
+//   spectrogram        reads the audio analyser, one column every 33 ms, each in the colour of the modulation that made it
 //   switching waveform  draws the phase-A leg output of the current operating point (reference, triangle carrier, ±1 pulses), so you can see "how many pulses" at a glance
 //   level bar          loudness of the sound; it does not move when there is no sound, so you can confirm the sound is really coming out
+// Every colour comes from the stylesheet's tokens (js/theme.js).
 (function (NS) {
   'use strict';
 
   const $ = (id) => document.getElementById(id);
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
   const TAU = Math.PI * 2;
-  const HUE = { async: '#2dd4bf', sync: '#818cf8', wide3: '#e879f9', square: '#fbbf24' };
+  const Theme = NS.Theme;
+  const KIND_TOKEN = { async: '--s-async', sync: '--s-sync', wide3: '--s-wide', square: '--s-square' };
+  const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+  const rgba = (c, a) => 'rgba(' + c.map(Math.round).join(',') + ',' + a + ')';
 
   // Triangle carrier: input is the phase (in turns), 0 at 0 and rising, range [-1, 1] (same as synth.js)
   function tri(x) {
@@ -16,43 +20,78 @@
     return x < 0.25 ? 4 * x : x < 0.75 ? 2 - 4 * x : 4 * x - 4;
   }
 
-  // ================================================================ Spectrogram
-  const spec = { g: null, w: 0, h: 0, lut: null, bins: null, last: 0 };
-  function initSpectro() {
-    const cv = $('spec');
-    if (!cv) return;
-    cv.width = 240;
-    cv.height = 120;
-    spec.w = cv.width;
-    spec.h = cv.height;
-    spec.g = cv.getContext('2d');
-    spec.g.fillStyle = '#03060c';
-    spec.g.fillRect(0, 0, spec.w, spec.h);
-    // Colour map: black → deep blue → cyan → pale cyan-white (matches the main colour of the UI)
+  // ================================================================ Colours
+  const ink = { screen: [8, 9, 10], grid: '', carrier: '', ref: '', idle: '', font: '', hue: {}, fill: {} };
+  const spec = { g: null, w: 240, h: 0, luts: {}, bins: null, last: 0 };
+
+  // Colour map of the spectrogram: from the screen colour up through one hue to white. One hue only: brightness is the loudness.
+  function makeLut(hue) {
+    const bg = ink.screen;
     const stops = [
-      [0, 3, 6, 12],
-      [0.28, 10, 40, 96],
-      [0.55, 14, 140, 190],
-      [0.8, 120, 230, 230],
-      [1, 245, 253, 250],
+      [0, bg],
+      [0.3, mix(bg, hue, 0.2)],
+      [0.62, mix(bg, hue, 0.82)],
+      [0.86, mix(hue, [255, 255, 255], 0.45)],
+      [1, [255, 255, 255]],
     ];
-    spec.lut = new Uint8ClampedArray(256 * 3);
+    const lut = new Uint8ClampedArray(256 * 3);
     for (let i = 0; i < 256; i++) {
       const x = i / 255;
       let j = 1;
       while (j < stops.length - 1 && x > stops[j][0]) j++;
-      const [x0, r0, g0, b0] = stops[j - 1];
-      const [x1, r1, g1, b1] = stops[j];
-      const t = clamp((x - x0) / (x1 - x0), 0, 1);
-      spec.lut[i * 3] = r0 + (r1 - r0) * t;
-      spec.lut[i * 3 + 1] = g0 + (g1 - g0) * t;
-      spec.lut[i * 3 + 2] = b0 + (b1 - b0) * t;
+      const [x0, c0] = stops[j - 1];
+      const [x1, c1] = stops[j];
+      const c = mix(c0, c1, clamp((x - x0) / (x1 - x0), 0, 1));
+      lut[i * 3] = c[0];
+      lut[i * 3 + 1] = c[1];
+      lut[i * 3 + 2] = c[2];
+    }
+    return lut;
+  }
+
+  function readTheme() {
+    const s = Theme.rgb('--screen');
+    const t = Theme.rgb('--screen-ink');
+    ink.screen = s;
+    ink.grid = rgba(t, 0.07);
+    ink.carrier = rgba(t, 0.18);
+    ink.ref = rgba(t, 0.6);
+    ink.idle = rgba(t, 0.4);
+    ink.font = '12px ' + (Theme.css('--font') || 'sans-serif');
+    Object.keys(KIND_TOKEN).forEach((k) => {
+      const c = Theme.rgb(KIND_TOKEN[k]);
+      ink.hue[k] = rgba(c, 1);
+      ink.fill[k] = rgba(c, 0.16);
+      spec.luts[k] = makeLut(c);
+    });
+    spec.luts.mono = makeLut(t); // while the inverter is not running
+    if (spec.g) {
+      spec.h = 0; // repaint: the old columns were drawn with the old colours
+      fitSpectro();
     }
   }
-  function drawSpectro(analyser, nowMs) {
-    if (!analyser || !spec.g || nowMs - spec.last < 33) return;
+
+  // ================================================================ Spectrogram
+  // 240 columns wide (one per 33 ms, about 8 s); as tall as the box on screen, so a taller box shows more frequency detail
+  function fitSpectro() {
+    const cv = $('spec');
+    if (!cv) return false;
+    const h = clamp(Math.round(cv.clientHeight * Math.min(window.devicePixelRatio || 1, 2)), 96, 420);
+    if (h !== spec.h || cv.width !== spec.w) {
+      cv.width = spec.w;
+      cv.height = h;
+      spec.h = h;
+      spec.g = cv.getContext('2d');
+      spec.g.fillStyle = rgba(ink.screen, 1);
+      spec.g.fillRect(0, 0, spec.w, h);
+    }
+    return true;
+  }
+  function drawSpectro(analyser, nowMs, f) {
+    if (!analyser || nowMs - spec.last < 33 || !fitSpectro()) return;
     spec.last = nowMs;
-    const { g, w, h, lut } = spec;
+    const { g, w, h } = spec;
+    const lut = (f && f.run && spec.luts[f.segKind]) || spec.luts.mono; // the column wears the colour of the modulation that is sounding
     if (!spec.bins || spec.bins.length !== analyser.frequencyBinCount) spec.bins = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(spec.bins);
     const binHz = analyser.context.sampleRate / analyser.fftSize;
@@ -119,11 +158,11 @@
     const amp = h / 2 - 8;
     // horizontal reference lines: 0, ±1
     g.lineWidth = 1;
-    g.strokeStyle = 'rgba(255,255,255,.06)';
+    g.strokeStyle = ink.grid;
     g.beginPath();
     for (const k of [-1, 0, 1]) {
-      g.moveTo(0, yc - k * amp);
-      g.lineTo(w, yc - k * amp);
+      g.moveTo(0, Math.round(yc - k * amp) + 0.5);
+      g.lineTo(w, Math.round(yc - k * amp) + 0.5);
     }
     g.stroke();
 
@@ -138,7 +177,7 @@
       const th0 = -Math.PI * win;
       const span = TAU * win;
       const N = Math.min(1600, Math.max(400, Math.round(w * 3)));
-      const hue = HUE[f.segKind] || HUE.async;
+      const kind = ink.hue[f.segKind] ? f.segKind : 'async';
       const ys = [];
       for (let i = 0; i <= N; i++) {
         const th = th0 + (span * i) / N;
@@ -150,7 +189,7 @@
       // reference and carrier (faint)
       if (!square) {
         g.lineWidth = 1;
-        g.strokeStyle = 'rgba(255,255,255,.16)';
+        g.strokeStyle = ink.carrier;
         g.beginPath();
         for (let i = 0; i <= N; i++) {
           const th = th0 + (span * i) / N;
@@ -161,7 +200,7 @@
         }
         g.stroke();
       }
-      g.strokeStyle = 'rgba(255,255,255,.55)';
+      g.strokeStyle = ink.ref;
       g.setLineDash([3, 3]);
       g.beginPath();
       for (let i = 0; i <= N; i++) {
@@ -182,10 +221,10 @@
       }
       g.lineTo(w, yc);
       g.closePath();
-      g.fillStyle = hue + '22';
+      g.fillStyle = ink.fill[kind];
       g.fill();
-      g.lineWidth = 1.6;
-      g.strokeStyle = hue;
+      g.lineWidth = 1.5;
+      g.strokeStyle = ink.hue[kind];
       g.lineJoin = 'round';
       g.beginPath();
       for (let i = 0; i <= N; i++) {
@@ -200,13 +239,13 @@
         : sync
           ? f.n + ' pulses per cycle'
           : win < 1
-            ? 'zoom: ~30 carrier periods'
+            ? 'zoomed: 30 carrier periods'
             : Math.round(ratio) + ' carriers per cycle';
     } else {
-      g.fillStyle = 'rgba(255,255,255,.28)';
-      g.font = '12px sans-serif';
+      g.fillStyle = ink.idle;
+      g.font = ink.font;
       g.textAlign = 'center';
-      g.fillText('Inverter is not running, no switching waveform', w / 2, yc + 4);
+      g.fillText('Inverter is not running', w / 2, yc + 4);
     }
     if (cap !== wave.cap) {
       wave.cap = cap;
@@ -216,7 +255,9 @@
   }
 
   function init() {
-    initSpectro();
+    readTheme();
+    fitSpectro();
+    Theme.onChange(readTheme);
   }
 
   NS.Scopes = { init, drawSpectro, drawLevel, drawWave };

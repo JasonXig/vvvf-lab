@@ -71,7 +71,7 @@
       const { spec, g } = ctx;
       const group = H.piece(new T.Group(), {
         id: 'stator',
-        name: 'Stator ring (slots on both faces)',
+        name: 'Stator ring',
         dir: [0, 0, 1],
         dist: 0,
         info: {
@@ -223,7 +223,7 @@
       return {
         mesh,
         anchor: new T.Vector3(g.rMid * Math.cos(0.45), g.rMid * Math.sin(0.45), g.gapZ),
-        label: 'Air-gap field (orange = flux from rotor into stator)',
+        label: 'Air-gap field',
         update(st) {
           const amp = st.power === undefined ? 1 : st.power;
           mesh.visible = view.showField && amp > 0.01;
@@ -290,7 +290,7 @@
       const c = view.cutCenterDeg * DEG; // the notch faces the default view; the labels are spread around it
       const at = (r, a, z) => new T.Vector3(r * Math.cos(a), r * Math.sin(a), z);
       return [
-        { text: 'Stator ring (slots on both faces)', pos: at(g.Ro, c - 0.62, g.zT) },
+        { text: 'Stator ring', pos: at(g.Ro, c - 0.62, g.zT) },
         { text: 'Toroidal winding', pos: at(g.Ro + 0.05, c + 0.85, g.zT) },
         { text: built.field.label, pos: at(g.rMid, c - 0.1, g.gapZ) },
         { text: 'Shaft', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.28) },
@@ -308,10 +308,10 @@
       const halfWidth = (spec.magnetCoverage * pitch) / 2;
       [1, -1].forEach((sg) => {
         const clip = sg > 0 ? planes : null;
-        const side = sg > 0 ? 'front' : 'back';
+        const side = sg > 0 ? 'Front' : 'Back';
         const disc = H.piece(new T.Group(), {
           id: 'disc' + (sg > 0 ? 'Front' : 'Back'),
-          name: 'Rotor disc (' + side + ')',
+          name: side + ' rotor disc',
           dir: [0, 0, sg],
           dist: g.xFar,
           step: 1,
@@ -327,7 +327,7 @@
 
         const magnets = H.piece(new T.Group(), {
           id: 'magnets' + (sg > 0 ? 'Front' : 'Back'),
-          name: 'Magnets (' + side + ')',
+          name: side + ' magnets',
           dir: [0, 0, sg],
           dist: g.xNear,
           step: 2,
@@ -353,7 +353,7 @@
       return {
         group,
         fadeMats,
-        labels: [{ text: 'Rotor disc + magnets (one each side)', pos: new T.Vector3(g.Ro * Math.cos(a), g.Ro * Math.sin(a), g.zO) }],
+        labels: [{ text: 'Rotor disc and magnets', pos: new T.Vector3(g.Ro * Math.cos(a), g.Ro * Math.sin(a), g.zO) }],
       };
     },
   });

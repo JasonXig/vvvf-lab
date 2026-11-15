@@ -44,7 +44,7 @@
       // the cage: bars + end rings, one piece in the exploded view
       const cage = H.piece(new T.Group(), {
         id: 'cage',
-        name: 'Squirrel cage (bars + end rings)',
+        name: 'Squirrel cage',
         dir: [0, 0, 1],
         dist: g.xFar,
         step: 2,
@@ -92,7 +92,7 @@
       return {
         group,
         fadeMats: [coreMat, barMat, ringMat],
-        labels: [{ text: 'Squirrel-cage rotor (bars + end rings)', pos: new T.Vector3(g.Rr * 0.55, g.Rr * 0.4, Lr / 2 + 0.12) }],
+        labels: [{ text: 'Squirrel-cage rotor', pos: new T.Vector3(g.Rr * 0.55, g.Rr * 0.4, Lr / 2 + 0.12) }],
         update(st) {
           // bar current ∝ slip × |sin(p·(bar position − field position))|: the faster the field sweeps past a bar, the larger the current
           for (let j = 0; j < n; j++) {

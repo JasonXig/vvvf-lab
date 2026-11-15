@@ -313,7 +313,7 @@
     }),
     housing: ({ g }) => ({
       id: 'housing',
-      name: 'Housing (frame)',
+      name: 'Housing',
       dir: [0, 1, 0],
       dist: 2 * g.Rframe + 0.45,
       step: 0,
@@ -325,7 +325,7 @@
     }),
     endFront: ({ g }) => ({
       id: 'endFront',
-      name: 'End shield (front)',
+      name: 'Front end shield',
       dir: [0, 0, 1],
       dist: g.xFar + 0.55,
       step: 0,
@@ -338,7 +338,7 @@
     }),
     endBack: ({ g }) => ({
       id: 'endBack',
-      name: 'End shield (back)',
+      name: 'Back end shield',
       dir: [0, 0, -1],
       dist: g.xNear + 0.5,
       step: 0,
@@ -653,11 +653,11 @@
     const { g, kept } = ctx;
     const a = kept.full ? 0.9 : kept.a0 + 0.04; // along the top edge of the cut, above the motor from the default view
     const labels = [
-      { text: 'Stator core (slotted)', pos: new T.Vector3(((g.Rs + g.Ro) / 2) * Math.cos(a), ((g.Rs + g.Ro) / 2) * Math.sin(a), g.L * 0.3) },
-      { text: built.field.label || 'Air-gap field (orange / blue = flux direction)', pos: built.field.anchor },
+      { text: 'Stator core', pos: new T.Vector3(((g.Rs + g.Ro) / 2) * Math.cos(a), ((g.Rs + g.Ro) / 2) * Math.sin(a), g.L * 0.3) },
+      { text: built.field.label || 'Air-gap field', pos: built.field.anchor },
       { text: 'Shaft', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.55) },
     ];
-    if (built.winding.anchor) labels.splice(1, 0, { text: 'Three-phase winding (slot conductors + end turns)', pos: built.winding.anchor });
+    if (built.winding.anchor) labels.splice(1, 0, { text: 'Three-phase winding', pos: built.winding.anchor });
     return labels;
   }
 

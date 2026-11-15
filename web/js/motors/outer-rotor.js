@@ -93,7 +93,7 @@
   const statorPiece = (ctx) => {
     const m = K.pieces.stator(ctx);
     return Object.assign(m, {
-      name: 'Stator core (slots facing out)',
+      name: 'Stator core',
       dir: [0, 0, -1], // slides off the spindle backwards
       dist: ctx.g.xNear,
       info: Object.assign({}, m.info, {
@@ -115,7 +115,7 @@
       const { g } = ctx;
       const group = H.piece(new T.Group(), {
         id: 'spindle',
-        name: 'Fixed spindle + stator support',
+        name: 'Fixed spindle and support',
         dir: [0, 0, -1],
         dist: 0, // the fixed part: everything else comes off it
         info: {
@@ -163,7 +163,7 @@
     // The shared field ring, now just outside the stator teeth; seen from the stator, orange is still where the flux comes in from the rotor N poles
     field(ctx) {
       const f = K.parts.field(ctx);
-      f.label = 'Air-gap field (orange = flux from rotor into stator)';
+      f.label = 'Air-gap field';
       return f;
     },
 
@@ -199,10 +199,10 @@
       const c = view.cutCenterDeg * DEG; // the notch faces the default view; the labels are spread around it
       const at = (r, a, z) => new T.Vector3(r * Math.cos(a), r * Math.sin(a), z);
       return [
-        { text: 'Stator core (slots facing out)', pos: at(g.Rso, c - 0.75, 0) },
-        { text: 'Three-phase winding (slot conductors + end turns)', pos: at(g.rMid, c + 1.1, g.L / 2 + 0.17 + 0.2 / g.p) },
+        { text: 'Stator core', pos: at(g.Rso, c - 0.75, 0) },
+        { text: 'Three-phase winding', pos: at(g.rMid, c + 1.1, g.L / 2 + 0.17 + 0.2 / g.p) },
         { text: built.field.label, pos: at(g.gapR, c - 0.25, -g.L * 0.3) },
-        { text: 'Fixed spindle + stator support', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.42) },
+        { text: 'Fixed spindle', pos: new T.Vector3(0, g.Rsh + 0.02, g.endZ + 0.42) },
       ];
     },
 
@@ -232,7 +232,7 @@
       const halfWidth = (spec.magnetCoverage * pitch) / 2;
       const magnets = H.piece(new T.Group(), {
         id: 'magnets',
-        name: 'Permanent magnets (on the drum)',
+        name: 'Permanent magnets',
         dir: [0, 0, 1],
         dist: g.xFar,
         info: {
@@ -251,7 +251,7 @@
       return {
         group,
         fadeMats: [northMat, southMat],
-        labels: [{ text: 'Outer rotor: drum with magnets inside', pos: new T.Vector3(g.Ro * Math.cos(a), g.Ro * Math.sin(a), g.frontZ) }],
+        labels: [{ text: 'Rotor drum and magnets', pos: new T.Vector3(g.Ro * Math.cos(a), g.Ro * Math.sin(a), g.frontZ) }],
         setOpacity(o) {
           const solid = o >= 0.999;
           drumMat.transparent = !solid;
