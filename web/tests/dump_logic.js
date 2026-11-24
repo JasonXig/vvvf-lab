@@ -101,57 +101,6 @@ for (const key of Object.keys(presets)) {
     out.carrier.push({ preset: key, v, a: Table.carrierAt(presets[key], v, f1), b: Table.operatingPoint(presets[key], v, f1).fc });
   }
 }
-// Scale steps: note names ↔ frequencies, scales, and laying a run of constant-carrier asynchronous segments over a speed range
-out.notes = Object.fromEntries(['A4', 'C4', 'F#3', 'Bb4', 'c5', '523.25 Hz', '440', 'hello', 'H4', ''].map((s) => [s, Table.noteFrequency(s)]));
-out.scales = {
-  major: Table.scaleNotes('C4', 'major'),
-  minor: Table.scaleNotes('A3', 'minor'),
-  pentatonic: Table.scaleNotes('C4', 'pentatonic'),
-  chromatic: Table.scaleNotes('B3', 'chromatic'),
-  bad: Table.scaleNotes('nope', 'major'),
-};
-out.nearest = [440, 261.63, 523.25, 450].map((f) => Object.assign({ f }, Table.nearestNote(f)));
-{
-  const majorHz = Table.scaleNotes('C4', 'major').map((n) => Table.noteFrequency(n));
-  const t1 = Table.clone(presets.reference);
-  Table.staircase(t1, 0, 15, majorHz);
-  out.stair1 = { table: t1, problems: Table.validate(t1), freqs: majorHz };
-
-  // A range in the middle that crosses several segments, including an asynchronous ramp: the carrier curve outside the range must stay exactly as it was
-  const t2 = { name: 'ramp', maxSpeed: 160, vBase: 38, vFull: 100, segments: [{ to: 40, kind: 'async', fc0: 100, fc1: 900 }, { to: 80, kind: 'sync', n: 9 }, { to: 160, kind: 'wide3' }] };
-  const probe = [0, 3, 9.9, 11, 13, 16, 19, 20.1, 25, 39.9, 41, 60, 100];
-  const carriers = (t) => probe.map((v) => ({ v, fc: Table.carrierAt(t, v, 50) }));
-  const t2b = Table.clone(t2);
-  Table.staircase(t2b, 10, 20, [200, 300, 400, 500]);
-  out.stair2 = { table: t2b, problems: Table.validate(t2b), before: carriers(t2), after: carriers(t2b) };
-
-  // Across several segments (replace 5–45 km/h of the GTO table with steps), and all the way up to the top speed
-  const t3 = Table.clone(presets.gto);
-  Table.staircase(t3, 5, 45, [150, 200, 250, 300, 350, 400, 450, 500]);
-  const t4 = Table.clone(presets.reference);
-  Table.staircase(t4, 100, 160, [300, 400, 500]);
-  out.stair3 = { gto: { table: t3, problems: Table.validate(t3) }, tail: { table: t4, problems: Table.validate(t4) } };
-
-  const attempt = (table, ...args) => {
-    try {
-      Table.staircase(Table.clone(table), ...args);
-      return null;
-    } catch (e) {
-      return e.message;
-    }
-  };
-  out.stairErrors = {
-    empty: attempt(presets.reference, 0, 15, []),
-    badFreq: attempt(presets.reference, 0, 15, [100, 5]),
-    reversed: attempt(presets.reference, 15, 5, [100, 200]),
-    overMax: attempt(presets.reference, 0, 200, [100, 200]),
-    tooNarrow: attempt(presets.reference, 0, 3, [100, 200, 300, 400, 500, 600, 700, 800]),
-    tooCloseStart: attempt(presets.reference, 34.7, 36, [100, 200]),
-    tooCloseEnd: attempt(presets.reference, 10, 34.2, [100, 200]),
-  };
-  out.scalePreset = presets.scale;
-}
-
 // What the 3D view draws: load angle, where the stator's field goes, how large the winding currents are
 out.fieldLead = [[60, 8, false, 1], [60, 8, true, 1], [60, 8, false, 0.25], [70, 4, false, 0], [40, 2, true, 0.5]].map(([a, p, b, l]) => ({ a, p, b, l, lead: Drive.fieldLead(a, p, b, l) }));
 out.statorField = [];

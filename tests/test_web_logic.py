@@ -275,90 +275,9 @@ def test_js_no_inverter_means_no_traction_and_no_sound(js):
 
 
 def test_js_carrier_helper_agrees_with_the_operating_point(js):
-    assert len(js["carrier"]) == 32
+    assert len(js["carrier"]) == 8 * len(js["tables"])  # 8 speeds in every preset
     for row in js["carrier"]:
         assert row["a"] == pytest.approx(row["b"]), row
-
-
-def test_js_note_names_and_frequencies(js):
-    n = js["notes"]
-    assert n["A4"] == pytest.approx(440.0)
-    assert n["C4"] == pytest.approx(440 * 2 ** (-9 / 12))  # 261.626 Hz
-    assert n["F#3"] == pytest.approx(440 * 2 ** (-15 / 12))
-    assert n["Bb4"] == pytest.approx(440 * 2 ** (1 / 12))
-    assert n["c5"] == pytest.approx(440 * 2 ** (3 / 12))  # lower case is accepted too
-    assert n["523.25 Hz"] == pytest.approx(523.25) and n["440"] == 440
-    assert n["hello"] is None and n["H4"] is None and n[""] is None  # NaN is null in JSON
-    for row in js["nearest"]:
-        assert row["name"] == {440: "A4", 261.63: "C4", 523.25: "C5", 450: "A4"}[row["f"]]
-    assert next(r for r in js["nearest"] if r["f"] == 450)["cents"] == pytest.approx(39, abs=1)  # 450 Hz is about 39 cents above A4
-
-
-def test_js_scales(js):
-    s = js["scales"]
-    assert s["major"] == ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5"]
-    assert s["minor"] == ["A3", "B3", "C4", "D4", "E4", "F4", "G4", "A4"]
-    assert s["pentatonic"] == ["C4", "D4", "E4", "G4", "A4", "C5"]
-    assert s["chromatic"][0] == "B3" and s["chromatic"][1] == "C4" and s["chromatic"][-1] == "B4" and len(s["chromatic"]) == 13
-    assert s["bad"] == []
-
-
-def test_js_staircase_do_re_mi_in_the_first_15_kmh(js):
-    """Keikyu 1000-style "do re mi": 8 asynchronous steps of rising carrier in the first 15 km/h, the segments after them kept as they were."""
-    t, freqs = js["stair1"]["table"], js["stair1"]["freqs"]
-    assert js["stair1"]["problems"] == []
-    steps = t["segments"][:8]
-    assert [s["kind"] for s in steps] == ["async"] * 8
-    assert [s["fc0"] for s in steps] == freqs and [s["fc1"] for s in steps] == freqs  # each step has a constant carrier
-    assert freqs == sorted(freqs) and len(set(freqs)) == 8  # low to high
-    for k, s in enumerate(steps):  # 8 steps divide 0–15 km/h evenly (boundaries rounded to 0.1)
-        assert s["to"] == pytest.approx(15 * (k + 1) / 8, abs=0.06)
-    assert steps[-1]["to"] == 15
-    rest = t["segments"][8:]  # the original first segment (async 1050 Hz) is left with only 15–34.5, the 9-pulse and wide 3-pulse segments after it are unchanged
-    assert [(s["kind"], s["to"]) for s in rest] == [("async", 34.5), ("sync", 38), ("wide3", 160)]
-    assert rest[0]["fc0"] == rest[0]["fc1"] == 1050
-
-
-def test_js_staircase_leaves_the_carrier_curve_outside_the_range_untouched(js):
-    """Replacing 10–20 km/h with steps: the carrier curve outside the range (including the truncated async ramp) must not change at all."""
-    s = js["stair2"]
-    assert s["problems"] == []
-    for before, after in zip(s["before"], s["after"]):
-        if before["v"] < 10 or before["v"] > 20:
-            assert after["fc"] == pytest.approx(before["fc"], abs=0.2), before
-    inside = [a["fc"] for a in s["after"] if 10 < a["v"] < 20]
-    assert inside and all(fc in (200, 300, 400, 500) for fc in inside)
-    assert [(g["kind"], g["to"]) for g in s["table"]["segments"]] == [("async", 10), ("async", 12.5), ("async", 15), ("async", 17.5), ("async", 20), ("async", 40), ("sync", 80), ("wide3", 160)]
-
-
-def test_js_staircase_across_several_segments_and_up_to_the_top_speed(js):
-    gto = js["stair3"]["gto"]
-    assert gto["problems"] == []
-    segs = gto["table"]["segments"]
-    assert sum(1 for s in segs if s["kind"] == "async" and s["fc0"] == s["fc1"] and 150 <= s["fc0"] <= 500) >= 8
-    assert segs[-1]["kind"] == "square" and segs[-1]["to"] == 160  # the later segments are still there
-    tail = js["stair3"]["tail"]
-    assert tail["problems"] == []
-    assert [s["kind"] for s in tail["table"]["segments"]][-3:] == ["async"] * 3 and tail["table"]["segments"][-1]["to"] == 160
-
-
-def test_js_staircase_rejects_unreasonable_requests_with_a_reason(js):
-    e = js["stairErrors"]
-    assert "At least one note" in e["empty"]
-    assert "20 and 20000" in e["badFreq"]
-    assert "Speed range" in e["reversed"] and "Speed range" in e["overMax"]
-    assert "too narrow" in e["tooNarrow"]
-    assert "too close" in e["tooCloseStart"] and "too close" in e["tooCloseEnd"]
-
-
-def test_js_scale_preset_is_the_default_do_re_mi(js):
-    """The do-re-mi preset: heard pitch C4–C5 (at low speed the heard pitch is twice the carrier, so the carrier is half of it), laid over 0–20 km/h."""
-    t = js["scalePreset"]
-    steps = t["segments"][:8]
-    assert [s["kind"] for s in steps] == ["async"] * 8
-    assert [s["fc0"] for s in steps] == pytest.approx([261.63 / 2, 293.66 / 2, 329.63 / 2, 349.23 / 2, 392.0 / 2, 440.0 / 2, 493.88 / 2, 523.25 / 2], abs=0.06)
-    assert [s["to"] for s in steps] == [2.5, 5, 7.5, 10, 12.5, 15, 17.5, 20]
-    assert [(s["kind"], s["to"]) for s in t["segments"][8:]] == [("sync", 30), ("sync", 42), ("wide3", 160)]
 
 
 def test_rotor_speed_at_130_kmh_is_about_4500_rpm(js):

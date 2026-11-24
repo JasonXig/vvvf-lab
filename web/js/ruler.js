@@ -19,6 +19,8 @@
   const HUE = { async: 'var(--m-async)', sync: 'var(--m-sync)', wide3: 'var(--m-wide)', square: 'var(--m-square)' };
   const KIND_SHORT = { async: 'Async', sync: 'Sync', wide3: 'Wide 3', square: 'Square' };
   const SNAP = 0.5; // rounding when dragging a boundary [km/h]
+  // Short names for the preset drop-down (the full names, with the modulation sequence, are longer than the menu is wide)
+  const PRESET_LABEL = { reference: 'Reference example', gto: 'GTO type, 420 Hz limit', igbt: 'IGBT type, 1.5 kHz limit' };
 
   let S = null;
   let hooks = null;
@@ -27,12 +29,15 @@
   let labels = null;
   let insp = null;
   let menu = null;
-  let scalePop = null;
   let geo = null;
   let ph = null;
   let dot = null;
   let phText = null;
   let phLast = '';
+  let legend = null; // the legend above the right end of the ruler, and where it is in ruler coordinates (measured on every render)
+  let legendBox = null;
+  let legendOver = false;
+  let dragX = null; // x of the boundary-drag flag, while there is one
   let segEls = { A: [], B: [] };
   let liveKey = '';
   let drag = null;
@@ -45,11 +50,8 @@
   }
   const fmt1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
   const hz = (x) => String(Math.round(x * 10) / 10);
-  // At low speed the pitch you hear for a carrier fc is about 2·fc: written as "523 Hz (C5)", with the deviation in cents when the note is not exact
-  function heardText(fc) {
-    const n = T.nearestNote(2 * fc);
-    return Math.round(2 * fc) + ' Hz (' + n.name + (n.cents ? (n.cents > 0 ? '+' : '') + n.cents + '¢' : '') + ')';
-  }
+  // At low speed the pitch you hear for a carrier fc is about 2·fc
+  const heardText = (fc) => Math.round(2 * fc) + ' Hz';
 
   // ================================================================ Geometry
   function layout() {
@@ -156,9 +158,13 @@
       const y = geo.laneY[li];
       const LH = geo.LH;
       node('rect', { class: 'lanebg', x: geo.padL, y, width: geo.plotW, height: LH, rx: 4 }, gLane);
-      // y-axis scale: how many Hz a full lane height stands for
+      // y-axis scale of the carrier curve: how many Hz a full lane height stands for
       const tt = node('text', { class: 'ytop', x: geo.padL + geo.plotW - 6, y: y + 13, 'text-anchor': 'end' }, gLane);
-      if (li === 0) tt.textContent = top >= 1000 ? top / 1000 + ' kHz' : top + ' Hz';
+      if (li === 0) {
+        const topText = top >= 1000 ? top / 1000 + ' kHz' : top + ' Hz';
+        tt.textContent = 'Carrier 0–' + topText;
+        node('title', null, tt).textContent = 'Scale of the carrier-frequency curve: the bottom of a lane is 0 Hz, the top is ' + topText;
+      }
 
       // Two markers on the voltage curve: full modulation (reference amplitude 1) and full voltage (square-wave equivalent)
       for (const [v, text] of [
@@ -179,14 +185,19 @@
         const g = node('g', { class: 'seg', 'data-hit': 'seg', 'data-lane': lane.id, 'data-i': i, style: '--h:' + HUE[s.kind] }, gLane);
         node('rect', { x: x0 + 1, y, width: Math.max(1, w - 2), height: LH, rx: 3 }, g); // a 2px gap of deck surface between neighbours
         if (w >= 8) node('path', { class: 'ticks', d: pulseTicks(s, traces[lane.id][i], x0, x1, y + LH - 7, y + LH - 2) }, g);
-        // Segment name and parameter on one line (the parameter only if it fits); the carrier curve is drawn below
-        if (w >= 38) {
-          const kindText = KIND_SHORT[s.kind];
-          const param = s.kind === 'async' ? (s.fc0 === s.fc1 ? hz(s.fc0) : hz(s.fc0) + '→' + hz(s.fc1)) + ' Hz' : s.kind === 'sync' ? s.n + ' pulses' : s.kind === 'wide3' ? 'overmod.' : '1 pulse';
-          const textW = (str) => [...str].reduce((a, c) => a + (c.charCodeAt(0) > 255 ? 11 : 6.2), 0);
+        // Segment name and parameter on one line, measured in the real font: the parameter only if both fit, the name only if it fits,
+        // so a narrow segment stays blank instead of running into its neighbour; the carrier curve is drawn below
+        if (w >= 24) {
+          const room = w - 14; // 8 px in from the left edge, 6 px clear of the right one
           const lab = node('text', { class: 'lab', x: x0 + 8, y: y + 13 }, g);
-          node('tspan', { class: 't1' }, lab).textContent = kindText;
-          if (8 + textW(kindText) * 1.1 + 8 + textW(param) + 6 <= w) node('tspan', { class: 't2', dx: 8 }, lab).textContent = param;
+          node('tspan', { class: 't1' }, lab).textContent = KIND_SHORT[s.kind];
+          if (lab.getComputedTextLength() > room) lab.remove();
+          else {
+            const param = s.kind === 'async' ? (s.fc0 === s.fc1 ? hz(s.fc0) : hz(s.fc0) + '→' + hz(s.fc1)) + ' Hz' : s.kind === 'sync' ? s.n + ' pulses' : s.kind === 'wide3' ? 'overmod.' : '1 pulse';
+            const t2 = node('tspan', { class: 't2', dx: 8 }, lab);
+            t2.textContent = param;
+            if (lab.getComputedTextLength() + 8 > room) t2.remove(); // the length does not count the 8 px dx
+          }
         }
         node('title', null, g).textContent = LANE_NAME[lane.id] + ' · ' + fmt1(from) + ' – ' + fmt1(s.to) + ' km/h · ' + T.describe(s) + ' (click to edit)';
         segEls[lane.id][i] = g;
@@ -203,7 +214,7 @@
       t.segments.forEach((s, i) => {
         if (i === t.segments.length - 1) return;
         const hx = xOf(s.to);
-        // Half width of the grab area: it must shrink for narrow segments (such as a run of scale steps), otherwise the handles on both sides cover the whole segment and it cannot be clicked
+        // Half width of the grab area: it must shrink for narrow segments, otherwise the handles on both sides cover the whole segment and it cannot be clicked
         const wLeft = xOf(s.to) - xOf(T.segmentFrom(t, i));
         const wRight = xOf(t.segments[i + 1].to) - hx;
         const half = clamp(Math.min(wLeft, wRight) / 4, 2.5, 7);
@@ -221,7 +232,6 @@
       lab.style.width = geo.padL - 6 + 'px'; // must not be wider than the blank space left of the ruler, otherwise it covers the first segment
       lab.innerHTML =
         '<b>' + (geo.narrow ? lane.id : lane.name) + '</b>' + (geo.narrow ? '' : '<small>' + lane.id + '</small>') +
-        (geo.narrow ? '' : '<button class="btn xs mini" data-scale="' + lane.id + '" aria-label="Scale steps of the ' + lane.name + ' table" title="Scale steps: lay a run of rising asynchronous modulations over a speed range (do re mi)"><svg class="ic" aria-hidden="true"><use href="#i-note"/></svg></button>') +
         '<button class="btn xs mini" data-menu="' + lane.id + '" aria-label="Options of the ' + lane.name + ' table" title="' + lane.name + ' table options: presets, voltage curve, import / export"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>';
       labels.appendChild(lab);
     });
@@ -253,6 +263,9 @@
     phText = node('text', { x: 0, y: 14, 'text-anchor': 'middle' }, ph);
     node('rect', { class: 'grab', x: -9, y: 0, width: 18, height: geo.axisY }, ph);
     phLast = '';
+    const lr = legend.getBoundingClientRect();
+    const sr = svg.getBoundingClientRect();
+    legendBox = lr.width ? { l: lr.left - sr.left - 6, r: lr.right - sr.left + 6 } : null;
     dragFlag();
     markSel();
     refreshInsp();
@@ -263,8 +276,10 @@
   function dragFlag() {
     const old = svg.querySelector('.dragflag');
     if (old) old.remove();
+    dragX = null;
     if (!drag || drag.kind !== 'handle') return;
     const v = S.tables[drag.lane].segments[drag.i].to;
+    dragX = xOf(v);
     const g = node('g', { class: 'dragflag', transform: 'translate(' + xOf(v).toFixed(1) + ' ' + (geo.laneY[drag.lane === 'B' ? 1 : 0] - 3) + ')' }, svg);
     node('rect', { x: -20, y: -18, width: 40, height: 18, rx: 3 }, g);
     node('text', { x: 0, y: -5, 'text-anchor': 'middle' }, g).textContent = fmt1(v);
@@ -286,6 +301,13 @@
     if (label !== phLast) {
       phLast = label;
       phText.textContent = label;
+    }
+    // a speed flag over the legend: the legend fades so the flag can be read
+    const near = (x) => legendBox && x + 24 > legendBox.l && x - 24 < legendBox.r;
+    const over = !!(near(px) || (dragX !== null && near(dragX)));
+    if (over !== legendOver) {
+      legendOver = over;
+      legend.classList.toggle('under', over);
     }
     const key = f.lane + ':' + f.seg + ':' + f.run;
     if (key !== liveKey) {
@@ -399,7 +421,6 @@
 
   function select(lane, i) {
     if (menu) menu.hidden = true;
-    if (scalePop) scalePop.hidden = true;
     S.sel = lane ? { lane, i } : null;
     showErr('');
     markSel();
@@ -533,7 +554,8 @@
     Object.keys(presets).forEach((k) => {
       const o = document.createElement('option');
       o.value = k;
-      o.textContent = presets[k].name;
+      o.textContent = PRESET_LABEL[k] || presets[k].name;
+      o.title = presets[k].name;
       $('tblPreset').appendChild(o);
     });
     const msg = menuNote;
@@ -618,130 +640,6 @@
     });
   }
 
-  // ================================================================ Scale steps (do re mi)
-  const round1 = (x) => Math.round(x * 10) / 10;
-  function initScale() {
-    Object.keys(T.SCALES).forEach((k) => {
-      const o = document.createElement('option');
-      o.value = k;
-      o.textContent = T.SCALES[k].name;
-      $('scKind').appendChild(o);
-    });
-    for (let oct = 3; oct <= 5; oct++) {
-      ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].forEach((n) => {
-        const o = document.createElement('option');
-        o.value = n + oct;
-        o.textContent = n + oct;
-        $('scRoot').appendChild(o);
-      });
-    }
-    $('scRoot').value = 'C4';
-    let scaleLane = 'A';
-    // The one-line message at the bottom of the popover; ok = true gives the success colour, otherwise the error red
-    const note = (text, ok) => {
-      const el = $('scMsg');
-      el.textContent = text || '';
-      el.classList.toggle('ok', !!ok);
-    };
-
-    function openScale(lane, btn) {
-      scaleLane = lane;
-      select(null); // close the editor and the menu
-      $('scTitle').textContent = 'Scale steps · ' + LANE_NAME[lane] + ' table';
-      note('');
-      info();
-      scalePop.hidden = false;
-      const r = btn.getBoundingClientRect();
-      const wr = wrap.getBoundingClientRect();
-      positionPop(scalePop, r.left - wr.left + r.width / 2);
-    }
-    labels.addEventListener('click', (e) => {
-      const b = e.target.closest('button[data-scale]');
-      if (!b) return;
-      if (!scalePop.hidden && scaleLane === b.dataset.scale) scalePop.hidden = true;
-      else openScale(b.dataset.scale, b);
-    });
-    // On a narrow screen there is no scale-steps button beside the lane name, so enter from the lane's menu
-    $('tblScale').addEventListener('click', () => openScale(menuLane, labels.querySelector('button[data-menu="' + menuLane + '"]') || $('tblScale')));
-    $('scClose').addEventListener('click', () => (scalePop.hidden = true));
-
-    // Read the notes in the text field as carrier frequencies; returns { carriers, names, error }
-    function parse() {
-      const tokens = $('scNotes').value.split(/[\s,;]+/).filter(Boolean);
-      const freqs = tokens.map(T.noteFrequency);
-      const bad = tokens.filter((_, i) => isNaN(freqs[i]));
-      if (!tokens.length) return { error: 'No notes yet' };
-      if (bad.length) return { error: 'Cannot read these notes: ' + bad.join(', ') + ' (write them like C4, F#3, Bb4, or give a frequency such as 523)' };
-      const heard = $('scBasis').value === 'heard';
-      return { tokens, freqs, carriers: freqs.map((f) => round1(heard ? f / 2 : f)), heard };
-    }
-    function info() {
-      const el = $('scInfo');
-      const p = parse();
-      const from = Number($('scFrom').value);
-      const to = Number($('scTo').value);
-      if (p.error) {
-        el.textContent = p.error;
-        return;
-      }
-      const n = p.carriers.length;
-      const w = (to - from) / n;
-      const c = p.carriers;
-      el.textContent = n + (n === 1 ? ' step' : ' steps') + ', about ' + (isFinite(w) ? Math.round(w * 100) / 100 : '?') + ' km/h each; carrier ' + c[0] + (n > 1 ? ' → ' + c[n - 1] : '') + ' Hz' + (p.heard ? ', heard pitch ' + p.tokens[0] + (n > 1 ? ' → ' + p.tokens[n - 1] : '') : ', the heard pitch is about twice the carrier');
-    }
-    function fill() {
-      $('scNotes').value = T.scaleNotes($('scRoot').value, $('scKind').value).join(' ');
-      info();
-    }
-    ['scKind', 'scRoot'].forEach((id) => $(id).addEventListener('change', fill));
-    ['scNotes', 'scFrom', 'scTo'].forEach((id) => $(id).addEventListener('input', info));
-    $('scBasis').addEventListener('change', info);
-    fill();
-
-    function generate(play) {
-      const p = parse();
-      if (p.error) return note(p.error);
-      const from = Number($('scFrom').value);
-      const to = Number($('scTo').value);
-      const t = T.clone(S.tables[scaleLane]);
-      try {
-        T.staircase(t, from, to, p.carriers);
-      } catch (err) {
-        return note(err.message);
-      }
-      const problems = T.validate(t);
-      if (problems.length) return note(problems[0]);
-      S.tables[scaleLane] = t;
-      S.sel = null; // the old segments are gone, so the selection is void (select(null) cannot be used: it would close the popover too)
-      render();
-      // the new steps grow in one after another, low to high
-      let k = 0;
-      t.segments.forEach((s, i) => {
-        if (T.segmentFrom(t, i) < from - 1e-6 || s.to > to + 1e-6) return;
-        const el = segEls[scaleLane][i];
-        el.style.setProperty('--k', k++);
-        el.classList.add('born');
-      });
-      hooks.saveTables();
-      note('Generated ' + p.carriers.length + (p.carriers.length === 1 ? ' step' : ' steps') + ' (' + LANE_NAME[scaleLane] + ' table ' + round1(from) + ' – ' + round1(to) + ' km/h)', true);
-      if (play) {
-        // Start at the beginning at full power (brake table: start at the end and brake with B2), so the steps sound one after another
-        hooks.stopDemo();
-        S.inverterOn = true;
-        if (scaleLane === 'A') {
-          S.speed = clamp(round1(from), 0, S.maxSpeed);
-          S.notch = Drive.notchIndex('P4');
-        } else {
-          S.speed = clamp(round1(to), 0, S.maxSpeed);
-          S.notch = Drive.notchIndex('B2');
-        }
-        hooks.gesture();
-      }
-    }
-    $('scGo').addEventListener('click', () => generate(true));
-    $('scMake').addEventListener('click', () => generate(false));
-  }
-
   // ================================================================ Mouse / touch
   function initPointer() {
     svg.addEventListener('pointerdown', (e) => {
@@ -820,13 +718,12 @@
     wrap = $('plot');
     svg = $('rulerSvg');
     labels = $('laneLabels');
+    legend = wrap.querySelector('.legend');
     insp = $('insp');
     menu = $('laneMenu');
-    scalePop = $('scalePop');
     initPointer();
     initInspector();
     initMenu();
-    initScale();
     // redraw when the width changes
     let raf = 0;
     const redraw = () => {

@@ -12,8 +12,8 @@
   const STEP_DELAY = 0.2; // pieces of a later step start this much later [s]
   const DETAIL_VIEW = { az: 1.02, pol: 1.2, dist: 6.4 }; // camera angle for the exploded view; it is fitted to the spread-out pieces
 
-  let A = null; // the main program: { S, camera, orbit, canvas, resize(), buildExploded(), restore() }
-  const X = { active: false, closing: false, pieces: [], meshes: [], hover: null, sel: null, press: null, saved: null, labelsOn: true };
+  let A = null; // the main program: { S, camera, orbit, canvas, resize(), refit(), buildExploded(), restore() }
+  const X = { active: false, closing: false, pieces: [], meshes: [], hover: null, sel: null, press: null, saved: null, labelsOn: true, roomTo: { w: 1, h: 1 } };
   const ray = new T.Raycaster();
   const ndc = new T.Vector2();
 
@@ -58,6 +58,8 @@
     const S = A.S;
     X.active = false;
     X.closing = false;
+    S.viewRoom = { w: 1, h: 1 };
+    X.roomTo = { w: 1, h: 1 };
     X.pieces.forEach((p) => p.el && p.el.remove());
     X.pieces = [];
     X.meshes = [];
@@ -149,10 +151,11 @@
     A.orbit.animateTo(home, 0.7);
   }
 
-  // Camera distance at which every corner fits in the view from the exploded view's angle, with room for the labels
-  function fitDistance(camera) {
-    const tanV = Math.tan((camera.fov * Math.PI) / 360) * 0.86;
-    const tanH = tanV * camera.aspect;
+  // Camera distance at which every corner fits in the view from the exploded view's angle, with room for the labels.
+  // tanV, tanH: half the stage's height and width as tangents of the view angle; an open card leaves only part of it (S.viewRoom)
+  function fitDistance(stageTanV, stageTanH) {
+    const tanV = stageTanV * 0.86 * A.S.viewRoom.h;
+    const tanH = stageTanH * 0.86 * A.S.viewRoom.w;
     const { az, pol } = DETAIL_VIEW;
     const u = new T.Vector3(Math.sin(pol) * Math.sin(az), Math.cos(pol), Math.sin(pol) * Math.cos(az)); // from the target to the camera
     const right = new T.Vector3().crossVectors(u.clone().negate(), new T.Vector3(0, 1, 0)).normalize();
@@ -187,6 +190,15 @@
       l.show = X.labelsOn && (p.max === 0 || p.off > 0.35 * p.dist || p === X.hover || p === X.sel);
       l.el.classList.toggle('hot', p === X.hover || p === X.sel);
     });
+    // an info card slid in or out: ease the picture into the room it leaves
+    const room = A.S.viewRoom;
+    if (room.w !== X.roomTo.w || room.h !== X.roomTo.h) {
+      const k = 1 - Math.exp(-dt / 0.12);
+      room.w += (X.roomTo.w - room.w) * k;
+      room.h += (X.roomTo.h - room.h) * k;
+      if (Math.abs(room.w - X.roomTo.w) < 1e-3 && Math.abs(room.h - X.roomTo.h) < 1e-3) Object.assign(room, X.roomTo);
+      A.refit();
+    }
     if (X.closing && !moving) finish();
   }
 
@@ -326,9 +338,15 @@
     $('xcNote').textContent = p.info.note || '';
     $('xcMove').hidden = p.max <= 0;
     $('xcStay').hidden = p.max > 0;
-    $('xcard').hidden = false;
+    const card = $('xcard');
+    card.hidden = false;
+    // Leave the pieces the room beside the card (at the right on a wide screen, above it when it is a bottom sheet on a phone)
+    const st = A.canvas.getBoundingClientRect();
+    if (card.offsetWidth > st.width * 0.6) X.roomTo = { w: 1, h: Math.max(0.4, (st.height - card.offsetHeight - 16) / st.height) };
+    else X.roomTo = { w: Math.max(0.4, (st.width - card.offsetWidth - 32) / st.width), h: 1 };
   }
   function closeCard() {
+    X.roomTo = { w: 1, h: 1 };
     $('xcard').hidden = true;
     if (X.sel) {
       X.sel = null;

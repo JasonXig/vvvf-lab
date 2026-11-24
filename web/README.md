@@ -29,7 +29,7 @@ URL parameters open the page in a given state:
 | `type` | Motor type: `induction`, `pmsm`, `ipmsm`, `outer-rotor`, `axial-flux` | `?type=axial-flux` |
 | `speed` | Vehicle speed in km/h | `?speed=60` |
 | `notch` | Controller notch: `B5`…`B1`, `N`, `H`, `P1`…`P4` | `?notch=P3` |
-| `map` | Replace both the power and brake tables with a preset: `reference`, `gto`, `igbt`, `scale` | `?map=igbt` |
+| `map` | Replace both the power and brake tables with a preset: `reference`, `gto`, `igbt` | `?map=igbt` |
 | `cut` | `0` means no cut-away (housing, the drum of an outer rotor, or the front disc of an axial-flux motor) | `?cut=0` |
 | `demo` | `1` starts the automatic demo | `?demo=1` |
 | `explode` | `1` opens the exploded view straight away | `?explode=1&type=ipmsm` |
@@ -72,37 +72,9 @@ The horizontal axis is vehicle speed from 0 to 160 km/h. The upper lane is the *
   - the two arrow buttons move to the previous / next segment (the editor slides over to it), "Split" cuts a segment in two, "Delete" merges it into its neighbour;
   - **Listen**: in the power table, jump to the middle of the segment and hold the speed; in the brake table, jump to its high-speed end and glide through with the lightest braking.
   - If you get something wrong (a speed limit below the previous one, an even pulse count) it tells you why and the table is left unchanged.
-- **♪ beside a lane name**: scale steps, lay "do re mi" in one click; see the next section.
-- **⋯ beside a lane name**: presets (reference example, GTO type, IGBT type, scale-style async), the voltage curve (the two speeds for full modulation and full voltage, shown as dashed lines on the ruler), copy to the other table, reset, export / import JSON. Tables are saved in the browser (localStorage) and are still there next time.
+- **⋯ beside a lane name**: presets (reference example, GTO type, IGBT type), the voltage curve (the two speeds for full modulation and full voltage, shown as dashed lines on the ruler), copy to the other table, reset, export / import JSON. Tables are saved in the browser (localStorage) and are still there next time.
 
-### Adding modulations at different speeds: the Keikyu 1000 "do re mi" as an example
-
-Say you want 7 more rising asynchronous steps in the first 15 km/h. There are two ways.
-
-**Way 1: scale steps (recommended).** Click the **♪** beside the Power lane name and fill in:
-
-| Item | Default | Notes |
-| --- | --- | --- |
-| Speed range | 0 – 15 km/h | The steps are laid over this range and **replace** the segments in it; segments outside are kept as they were (a segment crossing the boundary is truncated, and an async ramp is linearly interpolated at the cut, so the curve does not jump) |
-| Scale, root | Major, C4 | Major (do re mi fa sol la ti do), natural minor, pentatonic, chromatic; root C3 – B5 |
-| Notes | `C4 D4 E4 F4 G4 A4 B4 C5` | Filled in when you pick a scale; you can also edit it: note names (`C4`, `F#3`, `Bb4`) or plain frequencies (`523`), separated by spaces, as many steps as notes |
-| Pitch as | Heard pitch | See the note below |
-
-Press **Generate and listen**: the table immediately gains 8 constant-carrier asynchronous segments rising from low to high, and the page accelerates from the start with P4 so the steps sound one after another; in the spectrogram they are a staircase going up. **Generate only** changes the table without moving the train. The brake table (the lower lane) can be done too; listening then starts at the end with B2, so the scale comes down.
-
-![Click ♪: 8 steps laid over the first 15 km/h, a staircase in the spectrogram](../docs/web_scale_doremi.png)
-
-> **Why the carrier is only half of the heard pitch with "Pitch as heard pitch":** in the three-phase line voltage the carrier itself (fc) cancels, and the two main groups of lines left are **fc ± 2f₁** (strength roughly proportional to the modulation index squared) and **2fc ± f₁** (roughly proportional to m). When m is small the second group is much stronger, so the pitch you hear is about twice the carrier: to hear C4 (262 Hz) set the carrier to 131 Hz. With "Carrier frequency itself" the numbers you write are used as the carrier directly.
->
-> The two groups are equally loud at **m ≈ 0.7** (about 27 km/h with the default voltage curve, counting the ripple current falling with frequency); above that the lower group is louder and the heard pitch drops back to the carrier itself. So put the steps in the low-speed range; the first 15 km/h is just right.
->
-> Measured (the default 8 steps, accelerating through with P4): the strongest line in each step's spectrum is within 0.5% – 4% of the target note, slightly low because the strongest is the 2fc − f₁ sideband; the beating between the two sidebands (2f₁) is the roughness typical of inverter sound.
->
-> Click any step and the editor shows "heard pitch about N Hz (nearest note name and cents deviation)", which helps with manual tuning.
-
-**Way 2: by hand.** Click the first segment (0 – 34.5 km/h async 1050 Hz) → set its "speed limit" to 15 → press "Split" to cut it in two, then keep splitting each half… select each step on its own and set the start and end carrier (the same number in both boxes is a constant carrier). 8 steps take 7 splits and 16 numbers, which is why way 1 exists. The ready-made **scale-style async** preset (load it from the ⋯ menu) is the same thing: heard pitch C4 – C5, one step per 2.5 km/h, laid over 0 – 20 km/h.
-
-**The real Keikyu 1000** used a Siemens GTO inverter, and I have no data on its actual pitches or the speed range of each step; the "do re mi" here is a sketch laid out as a major scale. The speed and pitch of every step can be changed, and it can be calibrated once there is a recording to compare with.
+**The pitch of an async segment.** Click one and the editor shows the pitch you hear, which at low speed is about **twice the carrier**, not the carrier itself. In the three-phase line voltage the carrier (fc) cancels, and the two main groups of lines left are **fc ± 2f₁** (strength roughly proportional to the modulation index squared) and **2fc ± f₁** (roughly proportional to m). When m is small the second group is much stronger. The two are equally loud at **m ≈ 0.7** (about 27 km/h with the default voltage curve, counting the ripple current falling with frequency); above that the lower group is louder and the heard pitch drops back towards the carrier.
 
 The segment with the stronger colour is the one the inverter is using right now, and at the moment the inverter changes modulation a line flashes on the cursor, in time with the change you hear. With the inverter switched off the whole ruler fades: nothing on it can sound.
 
@@ -112,10 +84,10 @@ The segment with the stronger colour is the one the inverter is using right now,
 - **Status**: Power / Neutral / Hold / Brake / Stopped, and the current modulation; when the inverter is not running it says why (inverter off, regenerative brake released, inverter standby). Six readouts: fundamental frequency f₁, carrier, voltage V₁ (a square wave is 100%), synchronous speed, rotor speed, slip ratio.
 - **Inverter lamp**: off means no tractive effort and no regenerative braking: power and hold can only coast, and braking is mechanical only (no sound, and the field disappears too). Regenerative braking is released below 1 Hz of fundamental frequency and handed over to mechanical braking.
 - **Speaker** and volume bar affect only the sound, not the train. `M` mutes.
-- On the right: the **spectrogram** (last 7 seconds, 0–4 kHz vertically, so you can see the flat carrier line and the slanting synchronous lines; every column is drawn in the colour of the modulation that was sounding, the same colours as the ruler) and the **switching waveform** (the ±1 output of the phase-A leg with the reference sine and triangle carrier, so you can see "how many pulses" at a glance; when the async carrier is too dense it zooms in to 30 carrier periods). The thin bar under the spectrogram is loudness and does not move when there is no sound.
+- On the right: the **spectrogram** (last 7 seconds, 0–4 kHz vertically, so you can see the flat carrier line and the slanting synchronous lines; every column is drawn in the colour of the modulation that was sounding, the same colours as the ruler) and the **switching waveform** (the ±1 output of the phase-A leg with the reference sine and triangle carrier, so you can see "how many pulses" at a glance; when the async carrier is too dense it zooms in to 30 carrier periods). The segmented **Level** meter under the spectrogram is the loudness, and stays empty when there is no sound.
 - Along the top: **Motor** (type, JSON motor definition), **Display** (how speed is shown, scene options), **Demo** (automatic: accelerate with P4 to 120 km/h → neutral coasting for 4 s → brake to a stop with B3 → repeat; touching the controller or the ruler stops it), **?** (how to play). `P` pauses the animation.
 
-On a narrow screen (phone portrait) the cab deck becomes a bottom sheet with the motor above it and the editor above the ruler; the controller and the ruler both support touch dragging.
+On a narrow screen (phone portrait) the cab deck becomes a bottom sheet with the motor above it and the editor above the ruler; the controller and the ruler both support touch dragging. On touch screens the small buttons and the volume slider take a bigger target than they show.
 
 <img src="../docs/web_phone.png" width="260" alt="Phone portrait: the motor on top, the cab deck as a bottom sheet">
 
@@ -133,7 +105,7 @@ Each table is split into segments by vehicle speed:
 | Single pulse (square wave) | One pulse per fundamental period, maximum voltage |
 
 - **Voltage curve:** the fundamental voltage rises linearly with speed following V/f; at the "full modulation" speed the reference amplitude is 1, and at the "full voltage" speed it equals a square wave. The modulation index is determined by this curve together with the pulse count.
-- **Presets:** `Reference example` (async 1050 Hz → 9 pulses → wide 3-pulse, the default), `GTO type` (switching limit 420 Hz), `IGBT type` (1.5 kHz), `Scale-style async` (one step per 2.5 km/h over 0 – 20 km/h, heard pitch C4 – C5, do re mi). The GTO / IGBT tables are the Python `modes.py` "split by fundamental frequency" converted to vehicle speed with the current drivetrain parameters.
+- **Presets:** `Reference example` (async 1050 Hz → 9 pulses → wide 3-pulse, the default), `GTO type` (switching limit 420 Hz), `IGBT type` (1.5 kHz). The GTO / IGBT tables are the Python `modes.py` "split by fundamental frequency" converted to vehicle speed with the current drivetrain parameters.
 - The power and brake tables are two independent tables (the two lanes on the ruler); N and H use the power table.
 
 ## How the sound is made
@@ -292,11 +264,11 @@ labels(ctx, { winding, field }) { return [/* labels of the shared parts, placed 
 | `js/theme.js` | Lets the canvases read those tokens, so no colour is written in two places |
 | `js/modes.js` | The JavaScript version of Python `modes.py` (mode maps split by fundamental frequency) |
 | `js/drive.js` | Drivetrain and slip, longitudinal train dynamics, controller notches, the rule for when the inverter is running |
-| `js/table.js` | Mode tables split by speed: lookup, V/f curve, overmodulation conversion, calibration of synchronous modulation with few pulses, validation, presets, scales and scale steps |
+| `js/table.js` | Mode tables split by speed: lookup, V/f curve, overmodulation conversion, calibration of synchronous modulation with few pulses, validation, presets |
 | `js/synth.js` | The sound-synthesis core (self-contained, runs in an AudioWorklet and in Node) and the audio engine |
 | `js/motorkit.js`, `js/motors/` | Shared parts of the 3D motor, the inner-rotor layout, the type registry; one file per motor type (`induction`, `pmsm`, `ipmsm`, `outer-rotor`, `axial-flux`) |
 | `js/scopes.js` | Spectrogram, switching waveform, level bar |
-| `js/ruler.js` | The mode ruler: drawing, drag-to-jump, boundary dragging, editor, lane menus, scale steps |
+| `js/ruler.js` | The mode ruler: drawing, drag-to-jump, boundary dragging, editor, lane menus |
 | `js/ui.js` | Cab deck: master controller, readouts, inverter and sound, keyboard, drawer, first-run tips |
 | `js/explode.js` | Exploded view: freezing, sliding the pieces out and back, dragging along a path, info cards, leaving and carrying on |
 | `js/app.js` | Main program: controller → speed → operating point → sound and 3D |
@@ -307,7 +279,7 @@ In the console you can use `window.VVVF3D.App`: `state` is the whole state, `aud
 
 The logic layer and the sound-synthesis core do not depend on a browser, so they can run in Node and be cross-checked against Python (these two files are skipped automatically if Node.js is not installed):
 
-- `tests/test_web_logic.py`: mode tables, drivetrain, train dynamics, overmodulation conversion, all cross-checked against the Python version and independent formulas; the notch table, slip proportional to torque, acceleration of each notch, **the inverter keeps running in neutral and hold (so the sound continues)**, no traction or sound with the inverter off; the calibration of few-pulse synchronous modulation is verified with an independent numpy numerical integration; pulse counts must be odd; note names and frequencies, scales, and **scale steps** (8 steps over the first 15 km/h, the carrier curve outside the replaced range must not change, across several segments, up to the top speed, and the messages for unreasonable input).
+- `tests/test_web_logic.py`: mode tables, drivetrain, train dynamics, overmodulation conversion, all cross-checked against the Python version and independent formulas; the notch table, slip proportional to torque, acceleration of each notch, **the inverter keeps running in neutral and hold (so the sound continues)**, no traction or sound with the inverter off; the calibration of few-pulse synchronous modulation is verified with an independent numpy numerical integration; pulse counts must be odd.
 - `tests/test_web_synth.py`: the strongest lines of the JS synthesis against the Python `DriveSynth` one by one (within 4%); asynchronous sidebands, synchronous sidebands, three-phase balance (N not a multiple of 3), whether the fundamental is subtracted cleanly in wide 3-pulse; whether it is fast enough for real time.
 - `tests/test_web_motors.py`: builds every 3D motor type and preset in Node with the real three.js (geometry needs no WebGL), with the cut-away on and off: finite geometry of the expected size, labels in place, a few frames of `update()`; inner-rotor types are cut in their geometry and the outer rotor with clipping planes on exactly its turning parts; definitions that do not fit together are refused with a clear message; the stator field made by the winding currents is recomputed from the slots with Ampere's law and must sit where the page asked for it; load angles stay below 90 electrical degrees; every mesh belongs to exactly one piece of the exploded view, each type has the expected pieces with valid paths and filled-in cards, and the numbers on the cards come from the motor definition (cross-checked with formulas written out in Python).
 

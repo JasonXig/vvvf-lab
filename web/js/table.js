@@ -227,104 +227,7 @@
     return t;
   }
 
-  // ---- Scales: note names ↔ frequencies, and the "scale staircase" ---------------------------------------------------
-  // With asynchronous modulation, every step up in carrier is a step up in the pitch you hear: lay a run of asynchronous segments with constant, rising carriers over a speed range,
-  // and accelerating plays "do re mi" (the start-up sound of the Keikyu 1000 series GTO inverter).
-  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const NOTE_SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-  const NOTE_RE = /^([A-Ga-g])([#♯b♭]?)(-?\d)$/;
-  const SCALES = {
-    major: { name: 'Major (do re mi fa sol la ti do)', steps: [0, 2, 4, 5, 7, 9, 11, 12] },
-    minor: { name: 'Natural minor (la ti do re mi fa sol la)', steps: [0, 2, 3, 5, 7, 8, 10, 12] },
-    pentatonic: { name: 'Major pentatonic (do re mi sol la do)', steps: [0, 2, 4, 7, 9, 12] },
-    chromatic: { name: 'Chromatic (13 notes)', steps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
-  };
-
-  // "C4", "F#3", "Bb4" → MIDI note number (C4 = 60, A4 = 69); NaN if it is not a note name
-  function noteToMidi(text) {
-    const m = NOTE_RE.exec(String(text).trim());
-    if (!m) return NaN;
-    const accidental = m[2] === '#' || m[2] === '♯' ? 1 : m[2] ? -1 : 0;
-    return 12 * (Number(m[3]) + 1) + NOTE_SEMI[m[1].toUpperCase()] + accidental;
-  }
-  const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12); // twelve-tone equal temperament, A4 = 440 Hz
-  function midiToName(midi) {
-    return NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
-  }
-  // Note name (C4, F#3, Bb4) or a plain frequency (523, 523.25 Hz) → frequency [Hz]; NaN if not recognized
-  function noteFrequency(text) {
-    const midi = noteToMidi(text);
-    if (!isNaN(midi)) return midiToFreq(midi);
-    const m = /^(\d+(?:\.\d+)?)\s*(?:hz)?$/i.exec(String(text).trim());
-    return m ? Number(m[1]) : NaN;
-  }
-  // Frequency → nearest note name, and the deviation (cents, within ±50)
-  function nearestNote(freq) {
-    const midi = 69 + 12 * Math.log2(freq / 440);
-    const n = Math.round(midi);
-    return { name: midiToName(n), cents: Math.round((midi - n) * 100) };
-  }
-  // Root + scale → list of note names, e.g. ("C4", "major") → C4 D4 E4 F4 G4 A4 B4 C5
-  function scaleNotes(root, scaleKey) {
-    const base = noteToMidi(root);
-    const sc = SCALES[scaleKey];
-    return isNaN(base) || !sc ? [] : sc.steps.map((s) => midiToName(base + s));
-  }
-
-  // Lay a run of asynchronous segments with constant carriers over [from, to] km/h (freqs is the carrier of each step, in order),
-  // replacing the existing segments in that range; modifies t in place. Old segments outside the range are kept; a segment crossing the boundary is truncated,
-  // and an asynchronous ramp is linearly interpolated at the cut, so the curve does not jump. Unreasonable input throws an Error with an explanation.
-  function staircase(t, from, to, freqs) {
-    const r1 = (x) => Math.round(x * 10) / 10;
-    const lerp = (a, b, x) => a + (b - a) * x;
-    if (!freqs.length) throw new Error('At least one note is required');
-    if (!freqs.every((f) => f >= 20 && f <= 20000)) throw new Error('Carrier frequency must be between 20 and 20000 Hz');
-    from = r1(from);
-    to = r1(to);
-    if (!(from >= 0 && to > from && to <= t.maxSpeed)) throw new Error('Speed range must satisfy 0 ≤ start < end ≤ ' + t.maxSpeed + ' km/h');
-    const width = (to - from) / freqs.length;
-    const minWidth = MIN_GAP + 0.1; // boundaries are rounded to 0.1, so leave a little margin to keep adjacent boundaries at least MIN_GAP apart
-    if (width < minWidth - 1e-9) throw new Error('Steps too narrow: each step is only ' + Math.round(width * 100) / 100 + ' km/h, at least ' + minWidth + ' is needed. Use fewer notes or a wider speed range');
-    const out = [];
-    t.segments.forEach((s, i) => {
-      const a = segmentFrom(t, i);
-      if (a >= from - 1e-9) return;
-      if (from - a < MIN_GAP - 1e-9) throw new Error('The start ' + from + ' is too close to the previous boundary ' + a + ' (less than ' + MIN_GAP + ' km/h); move the start a little');
-      const seg = Object.assign({}, s, { to: Math.min(s.to, from) });
-      if (s.kind === 'async' && s.to > from) seg.fc1 = r1(lerp(s.fc0, s.fc1, (from - a) / (s.to - a)));
-      out.push(seg);
-    });
-    freqs.forEach((fc, k) => out.push({ to: k === freqs.length - 1 ? to : r1(from + width * (k + 1)), kind: 'async', fc0: fc, fc1: fc }));
-    t.segments.forEach((s, i) => {
-      if (s.to <= to + 1e-9) return;
-      if (s.to - to < MIN_GAP - 1e-9) throw new Error('The end ' + to + ' is too close to the next boundary ' + s.to + ' (less than ' + MIN_GAP + ' km/h); move the end a little');
-      const a = segmentFrom(t, i);
-      const seg = Object.assign({}, s);
-      if (s.kind === 'async' && a < to) seg.fc0 = r1(lerp(s.fc0, s.fc1, (to - a) / (s.to - a)));
-      out.push(seg);
-    });
-    t.segments = out;
-    return t;
-  }
-
   // ---- Presets -----------------------------------------------------------------------------------------------------
-  // The do-re-mi preset: heard pitch from C4 to C5, laid over 0–20 km/h (2.5 km/h per step); the carrier is half the heard pitch (see the explanation in the UI)
-  function scalePreset() {
-    const t = {
-      name: 'Scale-style async (do re mi: heard pitch C4–C5)',
-      maxSpeed: 160,
-      vBase: 38,
-      vFull: 100,
-      segments: [
-        { to: 30, kind: 'sync', n: 15 },
-        { to: 42, kind: 'sync', n: 9 },
-        { to: 160, kind: 'wide3' },
-      ],
-    };
-    const carriers = scaleNotes('C4', 'major').map((n) => Math.round(noteFrequency(n) * 5) / 10); // heard pitch ÷ 2, rounded to 0.1 Hz
-    return staircase(t, 0, 20, carriers);
-  }
-
   function presets() {
     return {
       reference: {
@@ -340,7 +243,6 @@
       },
       gto: fromModeMap(NS.Modes.PRESETS.gto, 'GTO type (switching limit 420 Hz)'),
       igbt: fromModeMap(NS.Modes.PRESETS.igbt, 'IGBT type (switching limit 1.5 kHz)'),
-      scale: scalePreset(),
     };
   }
 
@@ -365,11 +267,6 @@
     normalize,
     speedForF1,
     fromModeMap,
-    SCALES,
-    noteFrequency,
-    nearestNote,
-    scaleNotes,
-    staircase,
     presets,
   };
 })((window.VVVF3D = window.VVVF3D || {}));

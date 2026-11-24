@@ -15,7 +15,6 @@
   <symbol id="i-prev" viewBox="0 0 16 16"><path d="M10 3.5L5.5 8l4.5 4.5"/></symbol>
   <symbol id="i-next" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></symbol>
   <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.5v9l7.5-4.5z"/></symbol>
-  <symbol id="i-note" viewBox="0 0 16 16"><path d="M6.25 11.75V4.5l6.5-1.5v7.25"/><circle cx="4.5" cy="11.75" r="1.75"/><circle cx="11" cy="10.25" r="1.75"/></symbol>
   <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2"/></symbol>
   <symbol id="i-help" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M6.25 6.5a1.75 1.75 0 1 1 2.6 1.53c-.55.31-.85.7-.85 1.22"/><path d="M8 11.5h.01"/></symbol>
   <symbol id="i-vol" viewBox="0 0 16 16"><path d="M2.5 6.25h2.25L8 3.5v9L4.75 9.75H2.5z"/><path d="M10.5 5.9a3 3 0 0 1 0 4.2M12.4 4a5.7 5.7 0 0 1 0 8"/></symbol>
@@ -83,7 +82,7 @@
       <div class="yax"><span>4k</span><span>3k</span><span>2k</span><span>1k</span><span>0</span></div>
       <canvas id="spec"></canvas>
     </div>
-    <div class="vu" title="Loudness of the sound"><i id="vuFill"></i></div>
+    <div class="vu-row"><span>Level</span><div class="vu" title="Loudness of the sound"><i id="vuFill"></i></div></div>
   </section>
   <section class="card">
     <header><b>Phase A switching</b><span id="waveCap">—</span></header>
@@ -134,25 +133,11 @@
         <label class="fld"><span class="lbl">Full voltage</span><input id="vFull" type="number" step="1" min="2"><i>km/h</i></label>
         <p class="hint">The fundamental voltage rises with speed along V/f: at the full modulation speed the reference amplitude is 1, at the full voltage speed the output equals a square wave. The dashed lines on the ruler are these two speeds.</p>
       </div>
-      <div class="actions"><button class="btn sm" id="tblScale" title="Lay a run of rising asynchronous segments over a speed range: accelerating plays do re mi"><svg class="ic" aria-hidden="true"><use href="#i-note"/></svg>Scale steps</button></div>
       <div class="actions"><button class="btn sm" id="tblCopy">Copy to the Brake table</button><button class="btn sm" id="tblReset">Reset to default</button></div>
       <div class="actions"><button class="btn sm" id="tblExport">Export JSON</button><button class="btn sm" id="tblImport">Import JSON</button><input id="tblFile" type="file" accept=".json,application/json" hidden></div>
       <p id="menuMsg" class="err"></p>
     </div></div>
 
-    <div id="scalePop" class="pop" hidden role="dialog" aria-label="Scale steps"><div class="pop-scroll">
-      <div class="pop-head"><div><b id="scTitle">Scale steps · Power table</b><small>Do re mi: rising asynchronous steps</small></div><button class="btn xs" id="scClose" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></div>
-      <p class="hint" style="margin-top:0">Lay rising constant-carrier async steps over this speed range (the start-up sound of the Keikyu 1000 GTO inverter). Replaces the segments in the range.</p>
-      <div class="flds">
-        <label class="fld"><span class="lbl">Speed range</span><input id="scFrom" type="number" value="0" step="0.5" min="0"><em>to</em><input id="scTo" type="number" value="15" step="0.5" min="1"><i>km/h</i></label>
-        <div class="fld"><span class="lbl">Scale</span><select id="scKind" aria-label="Scale"></select><select id="scRoot" class="narrow" aria-label="Root note"></select></div>
-        <label class="fld"><span class="lbl">Notes</span><input id="scNotes" class="txt" type="text" spellcheck="false" autocomplete="off" aria-label="Notes, separated by spaces" placeholder="C4 D4 E4"></label>
-        <label class="fld"><span class="lbl">Pitch as</span><select id="scBasis" aria-label="What the notes refer to"><option value="heard">Heard pitch (carrier is half)</option><option value="carrier">Carrier frequency itself</option></select></label>
-      </div>
-      <p class="hint" id="scInfo"></p>
-      <div class="actions"><button class="btn sm primary" id="scGo" title="Generate the steps and accelerate from the start so you hear them in turn">Generate and listen</button><button class="btn sm" id="scMake">Generate only</button></div>
-      <p id="scMsg" class="err"></p>
-    </div></div>
 
     <div id="plot">
       <div class="legend" aria-hidden="true">

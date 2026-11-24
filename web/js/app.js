@@ -73,6 +73,7 @@
     motor: null,
     rpmMax: 6000, // full scale of the rotor-speed bar and of the blur colour, set by rebuild() from the drivetrain
     motorRadius: 2.29, // bounding-sphere radius of the motor, set by rebuild(); the camera frames the motor by it
+    viewRoom: { w: 1, h: 1 }, // share of the stage left free by a card over it (set by the exploded view); see refit()
     rotor: 0, // visual angle of the rotor [rad]
     slipAngle: 0, // how many more (or fewer) turns the rotating field makes than the rotor, i.e. the slip [rad]
     streak: 0, // phase of the blur pattern [turns]
@@ -93,7 +94,8 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.localClippingEnabled = true; // parts that turn are cut away with clipping planes (MotorKit.helpers.cutPlanes)
   const scene = new T.Scene();
-  const camera = new T.PerspectiveCamera(36, 1, 0.1, 100);
+  const FOV = 36; // vertical field of view of the camera [degrees]
+  const camera = new T.PerspectiveCamera(FOV, 1, 0.1, 100);
 
   scene.add(new T.AmbientLight(0xffffff, 0.9));
   scene.add(new T.HemisphereLight(0xcfe0ff, 0x1a2436, 1.3));
@@ -111,16 +113,33 @@
     const h = stage.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    const tanV = Math.tan((camera.fov * Math.PI) / 360);
-    const tanH = tanV * camera.aspect;
-    // effective radius of the motor's silhouette from the default view: 1.7 was tuned on the default induction motor, whose bounding
-    // sphere is 2.29 (the silhouette is much narrower than the sphere); other motors scale with their own bounding sphere
-    const R = (1.7 / 2.29) * S.motorRadius;
+    refit();
+  }
+  // Camera fit and projection for the stage as it is (no new drawing buffer, so the exploded view can call it every frame while a card slides in)
+  function refit() {
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    if (!w || !h) return;
+    const tanV = Math.tan((FOV * Math.PI) / 360);
+    const tanH = (tanV * w) / h;
+    // effective radius of the motor's silhouette from the default view: 1.36 is tuned on the default induction motor, whose bounding
+    // sphere is 2.29 (the silhouette is much narrower than the sphere), so that it fills its framed screen; other motors scale with their own bounding sphere
+    const R = (1.36 / 2.29) * S.motorRadius;
     const dV = (1.08 * R * Math.sqrt(1 + tanV * tanV)) / tanV;
     const dH = (1.08 * R * Math.sqrt(1 + tanH * tanH)) / tanH;
-    orbit.fit = S.explode ? NS.Explode.fitDistance(camera) / orbit.home.dist : Math.max(0.85, Math.max(dV, dH) / orbit.home.dist);
+    orbit.fit = S.explode ? NS.Explode.fitDistance(tanV, tanH) / orbit.home.dist : Math.max(0.85, Math.max(dV, dH) / orbit.home.dist);
+    // S.viewRoom: the share of the stage's width and height a card leaves free (the exploded view's info card). The picture is
+    // moved into that room at the same scale: the camera renders a wider (or taller) virtual canvas, and the stage shows the part of it
+    // that puts the scene's centre in the middle of the room.
+    const sx = ((1 - S.viewRoom.w) * w) / 2;
+    const sy = ((1 - S.viewRoom.h) * h) / 2;
+    const fw = w + 2 * sx;
+    const fh = h + 2 * sy;
+    camera.fov = (360 / Math.PI) * Math.atan((tanV * fh) / h);
+    camera.aspect = fw / fh;
+    if (sx || sy) camera.setViewOffset(fw, fh, 2 * sx, 2 * sy, w, h);
+    else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
   }
   // The height of the cab deck sets the height of the stage (on narrow screens the stylesheet fixes it at 60% of the screen)
   const phoneLayout = window.matchMedia('(max-width: 760px)');
@@ -610,6 +629,7 @@
     orbit,
     canvas: $('gl'),
     resize: syncDeckHeight,
+    refit,
     buildExploded() {
       const motor = K.build(S.spec, Object.assign({}, S.view, { cutaway: false, shellOpacity: 1 }));
       scene.remove(S.motor.root);
