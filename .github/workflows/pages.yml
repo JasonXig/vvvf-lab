@@ -16,17 +16,24 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# Upload and deploy run in separate jobs: when deploy-pages runs in the same job a fraction of a second
+# after the upload, its artifact lookup can come back empty (actions/deploy-pages#451).
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
